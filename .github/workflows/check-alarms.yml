@@ -1,0 +1,32 @@
+name: check-alarms
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: check-alarms
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - run: pip install -e .
+      - run: python scripts/check_alarms.py
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+          ADMIN_CHAT_ID: ${{ secrets.ADMIN_CHAT_ID }}
+          TCDD_MODE: ${{ vars.TCDD_MODE || 'stub' }}
+          TCDD_BEARER_TOKEN: ${{ secrets.TCDD_BEARER_TOKEN }}
+          TIMEZONE: Europe/Istanbul
+          LOG_LEVEL: INFO

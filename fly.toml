@@ -1,0 +1,14 @@
+app = "tcdd-telegram"
+primary_region = "fra"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  TIMEZONE = "Europe/Istanbul"
+  LOG_LEVEL = "INFO"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256
