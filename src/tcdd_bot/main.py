@@ -20,16 +20,7 @@ from .tcdd import build_backend
 CHECKER_INTERVAL_S = 30 * 60  # 30 minutes
 
 
-async def _post_init(app: Application) -> None:
-    settings = app.bot_data["settings"]
-    app.bot_data["stations"] = await StationCatalog.load()
-    app.bot_data["store"] = Store(settings.redis_url)
-    app.bot_data["tcdd"] = build_backend(settings.tcdd_mode)
-    app.bot_data["tz"] = ZoneInfo(settings.timezone)
-    logging.info("Bot ready (tcdd=%s)", settings.tcdd_mode)
-
-
-async def _heartbeat(app: Application) -> None:
+async def _heartbeat_loop(app: Application) -> None:
     while True:
         try:
             await app.bot_data["store"].heartbeat()
@@ -52,9 +43,15 @@ async def _check_alarms_job(ctx: ContextTypes.DEFAULT_TYPE) -> None:
         logging.exception("checker job failed")
 
 
-async def _post_start(app: Application) -> None:
-    app.create_task(_heartbeat(app))
-    # Schedule the alarm checker: first run after a random 0–15 min delay,
+async def _post_init(app: Application) -> None:
+    settings = app.bot_data["settings"]
+    app.bot_data["stations"] = await StationCatalog.load()
+    app.bot_data["store"] = Store(settings.redis_url)
+    app.bot_data["tcdd"] = build_backend(settings.tcdd_mode)
+    app.bot_data["tz"] = ZoneInfo(settings.timezone)
+
+    asyncio.create_task(_heartbeat_loop(app))
+    # Schedule the alarm checker: first run after a random 1–15 min delay,
     # then every 30 min thereafter. The random first delay spreads load
     # across bot restarts and gives TCDD natural jitter.
     first_delay = random.uniform(60, 15 * 60)
@@ -64,7 +61,10 @@ async def _post_start(app: Application) -> None:
         first=first_delay,
         name="check-alarms",
     )
-    logging.info("checker scheduled: first in %.0fs, then every %ds", first_delay, CHECKER_INTERVAL_S)
+    logging.info(
+        "Bot ready (tcdd=%s); checker scheduled in %.0fs, then every %ds",
+        settings.tcdd_mode, first_delay, CHECKER_INTERVAL_S,
+    )
 
 
 def main() -> None:
@@ -77,7 +77,6 @@ def main() -> None:
         Application.builder()
         .token(settings.bot_token)
         .post_init(_post_init)
-        .post_start(_post_start)
         .build()
     )
     app.bot_data["settings"] = settings
