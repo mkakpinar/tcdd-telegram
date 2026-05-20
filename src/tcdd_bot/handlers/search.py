@@ -145,7 +145,12 @@ async def _finish_search(
     await msg.reply_text("Arıyorum…")
     try:
         trains = await tcdd.search(
-            ud["from_id"], ud["to_id"], ud["date"], ud["pax"]
+            ud["from_id"],
+            ud["to_id"],
+            ud["date"],
+            ud["pax"],
+            from_name=ud["from_name"],
+            to_name=ud["to_name"],
         )
     except Exception as exc:
         log.exception("search failed")

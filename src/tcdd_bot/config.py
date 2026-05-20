@@ -29,5 +29,5 @@ def load_settings() -> Settings:
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         max_alarms_per_user=int(os.getenv("MAX_ALARMS_PER_USER", "5")),
         search_rate_per_hour=int(os.getenv("SEARCH_RATE_PER_HOUR", "10")),
-        tcdd_mode=os.getenv("TCDD_MODE", "stub"),
+        tcdd_mode=os.getenv("TCDD_MODE", "live"),
     )

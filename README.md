@@ -16,8 +16,8 @@ Interactive Telegram bot for TCDD train ticket search + alarms.
 - **Checker** (`scripts/check_alarms.py`) — GitHub Actions, every 30 min + 0–15 min jitter.
 - **State** — Upstash Redis (shared between bot and checker).
 - **TCDD client** — `src/tcdd_bot/tcdd.py`. Two backends:
-  - `StubBackend` (default): deterministic fake trains for local development.
-  - `LiveBackend`: real TCDD JSON API at `web-api-prod-ytp.tcddtasimacilik.gov.tr/tms`. Currently blocked by an edge WAF — see `## Known issues`.
+  - `LiveBackend` (default): real TCDD JSON API at `web-api-prod-ytp.tcddtasimacilik.gov.tr/tms`. Uses `curl_cffi` with Chrome ja3 impersonation because TCDD's edge ja3-fingerprints non-browser clients.
+  - `StubBackend`: deterministic fake trains for local development. Set `TCDD_MODE=stub` to use.
 
 ## Setup
 
@@ -78,18 +78,15 @@ Trigger once to test:
 gh workflow run check-alarms.yml
 ```
 
-## Known issues
+## Notes
 
-**TCDD search endpoint returns 403 from nginx.** The hardcoded JWT and `unit-id`
-header are correct (extracted from the production JS bundle) but the edge layer
-rejects non-browser clients. To unblock:
-
-1. Run Playwright against `/sefer-listesi`, perform a real search, log the actual
-   outgoing request headers — identify the WAF cookie or TLS-fingerprint signal.
-2. Either replicate that, or switch `LiveBackend` to a Playwright-based
-   implementation behind the same `TcddBackend` Protocol — no handler changes needed.
-
-The bot runs end-to-end with `TCDD_MODE=stub` today.
+- **WAF**: TCDD's edge ja3-fingerprints non-browser clients. We use `curl_cffi`
+  with `impersonate="chrome120"` which mimics Chrome's TLS stack exactly.
+  Standard `httpx` / `requests` get 403.
+- **Bearer token**: the production JS bundle embeds a JWT whose `exp` is in
+  2024 — but the TCDD gateway doesn't validate it. We hardcode the same token
+  in [tcdd.py](src/tcdd_bot/tcdd.py). If TCDD ever rotates it, re-extract from
+  the production JS (`case"TCDD-PROD":F="..."`).
 
 ## Files
 

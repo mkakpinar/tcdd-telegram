@@ -95,8 +95,12 @@ async def run() -> None:
             alarms.append(a)
 
     # Build set of (from_id, to_id, date) tuples to query, expanded ±1 day.
+    # Track names so we can pass them on the request.
     queries: set[tuple[int, int, date]] = set()
+    names: dict[int, str] = {}
     for a in alarms:
+        names[a.from_id] = a.from_name
+        names[a.to_id] = a.to_name
         for delta in (-1, 0, 1):
             d = a.travel_date + timedelta(days=delta)
             if d < datetime.now(tz).date():
@@ -106,7 +110,12 @@ async def run() -> None:
     results: dict[tuple[int, int, date], list[TrainResult]] = {}
     for q in queries:
         try:
-            results[q] = await tcdd.search(q[0], q[1], q[2], passengers=1)
+            results[q] = await tcdd.search(
+                q[0], q[1], q[2],
+                passengers=1,
+                from_name=names.get(q[0], ""),
+                to_name=names.get(q[1], ""),
+            )
         except Exception:
             log.exception("search failed for %s", q)
             results[q] = []
