@@ -13,8 +13,10 @@ Interactive Telegram bot for TCDD train ticket search + alarms.
 ## Architecture
 
 - **Bot** (`src/tcdd_bot/main.py`) — `python-telegram-bot` long-polling on Fly.io.
-- **Checker** (`scripts/check_alarms.py`) — GitHub Actions, every 30 min + 0–15 min jitter.
-- **State** — Upstash Redis (shared between bot and checker).
+- **Checker** (`src/tcdd_bot/checker.py`) — runs inside the bot process via PTB's
+  `JobQueue`, every 30 min with a random initial jitter. Same code is also
+  callable as a one-off via `scripts/check_alarms.py`.
+- **State** — Fly.io managed Upstash Redis (Pay-as-you-go, native protocol).
 - **TCDD client** — `src/tcdd_bot/tcdd.py`. Two backends:
   - `LiveBackend` (default): real TCDD JSON API at `web-api-prod-ytp.tcddtasimacilik.gov.tr/tms`. Uses `curl_cffi` with Chrome ja3 impersonation because TCDD's edge ja3-fingerprints non-browser clients.
   - `StubBackend`: deterministic fake trains for local development. Set `TCDD_MODE=stub` to use.
@@ -25,9 +27,11 @@ Interactive Telegram bot for TCDD train ticket search + alarms.
 
 Create one via @BotFather, copy the token.
 
-### 2. Upstash Redis
+### 2. Redis
 
-Create a free database at upstash.com, copy the REST URL + token.
+We use Fly.io's managed Upstash Redis (`fly redis create --plan Pay-as-you-go`),
+which is effectively free for personal use ($0.20 per 100K commands).
+Native Redis protocol — copy the `redis://default:PASSWORD@HOST:6379` URL.
 
 ### 3. Local dev
 
@@ -55,27 +59,19 @@ SKIP_JITTER=1 python scripts/check_alarms.py
 flyctl launch --no-deploy
 flyctl secrets set \
   BOT_TOKEN=… \
-  UPSTASH_REDIS_REST_URL=… \
-  UPSTASH_REDIS_REST_TOKEN=…
+  REDIS_URL=redis://default:…@fly-tcdd-redis.upstash.io:6379
 flyctl deploy
 ```
 
-### 5. Wire up GitHub Actions checker
+### 5. Periodic checker
+
+The checker runs automatically inside the bot process. No extra setup. See
+`fly logs` for "checker scheduled" / "checker: N active alarms" lines.
+
+To run it ad-hoc against your Fly Redis (e.g. for debugging):
 
 ```bash
-gh repo create tcdd-telegram --private --source=. --remote=origin --push
-gh secret set BOT_TOKEN
-gh secret set UPSTASH_REDIS_REST_URL
-gh secret set UPSTASH_REDIS_REST_TOKEN
-# Optional once live API works:
-# gh secret set TCDD_BEARER_TOKEN
-# gh variable set TCDD_MODE --body live
-```
-
-Trigger once to test:
-
-```bash
-gh workflow run check-alarms.yml
+fly ssh console -a tcdd-telegram -C "python scripts/check_alarms.py"
 ```
 
 ## Notes
@@ -103,10 +99,9 @@ src/tcdd_bot/
     search.py          /search conversation
     alarm.py           /alarm, /alarms, /clear, /pause, /resume
     common.py          shared inline keyboards
+  checker.py           periodic alarm checker (runs in-process via JobQueue)
 scripts/
-  check_alarms.py      periodic checker (GitHub Actions entrypoint)
-.github/workflows/
-  check-alarms.yml     cron */30 + workflow_dispatch
+  check_alarms.py      ad-hoc one-shot checker invocation
 Dockerfile             Fly.io image
 fly.toml               Fly.io app config
 ```

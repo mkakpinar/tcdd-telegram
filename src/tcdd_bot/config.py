@@ -8,8 +8,7 @@ load_dotenv()
 @dataclass(frozen=True)
 class Settings:
     bot_token: str
-    upstash_url: str
-    upstash_token: str
+    redis_url: str
     admin_chat_id: int | None
     timezone: str
     log_level: str
@@ -22,8 +21,7 @@ def load_settings() -> Settings:
     admin = os.getenv("ADMIN_CHAT_ID")
     return Settings(
         bot_token=os.environ["BOT_TOKEN"],
-        upstash_url=os.environ["UPSTASH_REDIS_REST_URL"],
-        upstash_token=os.environ["UPSTASH_REDIS_REST_TOKEN"],
+        redis_url=os.environ["REDIS_URL"],
         admin_chat_id=int(admin) if admin else None,
         timezone=os.getenv("TIMEZONE", "Europe/Istanbul"),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
