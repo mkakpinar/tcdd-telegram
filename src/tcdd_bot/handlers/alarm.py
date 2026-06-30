@@ -34,13 +34,14 @@ async def _finish_alarm(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
         to_id=ud["to_id"],
         from_name=ud["from_name"],
         to_name=ud["to_name"],
-        travel_date=ud["date"],
+        travel_dates=ud["dates"],
         passengers=ud["pax"],
     )
+    dates = ", ".join(d.strftime("%d.%m.%Y") for d in ud["dates"])
     await update.callback_query.message.reply_markdown(
         f"🔔 Alarm kuruldu! `{aid}`\n"
         f"{ud['from_name']} → {ud['to_name']}\n"
-        f"{ud['date'].strftime('%d.%m.%Y')} (±1 gün) · {ud['pax']} yolcu\n\n"
+        f"{dates} (±1 gün) · {ud['pax']} yolcu\n\n"
         "Yer çıkınca haber vereceğim. /alarms ile yönet."
     )
     return ConversationHandler.END
@@ -51,7 +52,7 @@ async def list_alarms(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     alarms = await store.list_user_alarms(update.effective_chat.id)
     text = fmt.render_alarm_list(alarms)
     rows = [
-        [InlineKeyboardButton(f"❌ {a.from_name[:10]} → {a.to_name[:10]} {a.travel_date.strftime('%d.%m')}", callback_data=f"alm:del:{a.id}")]
+        [InlineKeyboardButton(fmt.alarm_button_label(a), callback_data=f"alm:del:{a.id}")]
         for a in alarms
     ]
     kb = InlineKeyboardMarkup(rows) if rows else None
@@ -67,7 +68,7 @@ async def delete_alarm_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> Non
     alarms = await store.list_user_alarms(update.effective_chat.id)
     text = fmt.render_alarm_list(alarms)
     rows = [
-        [InlineKeyboardButton(f"❌ {a.from_name[:10]} → {a.to_name[:10]} {a.travel_date.strftime('%d.%m')}", callback_data=f"alm:del:{a.id}")]
+        [InlineKeyboardButton(fmt.alarm_button_label(a), callback_data=f"alm:del:{a.id}")]
         for a in alarms
     ]
     kb = InlineKeyboardMarkup(rows) if rows else None

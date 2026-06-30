@@ -43,10 +43,10 @@ def test_render_search_results_caps_at_ten():
     assert out.count("\n•") == 10
 
 
-def _alarm():
+def _alarm(travel_dates=None):
     return Alarm(
         id="abc123", chat_id=1, from_id=10, to_id=20, from_name="A", to_name="B",
-        travel_date=date(2026, 7, 5), passengers=2, active=True,
+        travel_dates=travel_dates or [date(2026, 7, 5)], passengers=2, active=True,
         created_at=datetime(2026, 6, 1), last_alerted_at=None,
     )
 
@@ -66,4 +66,16 @@ def test_render_alarm_list_shows_each_alarm():
     out = fmt.render_alarm_list([_alarm()])
     assert "abc123" in out
     assert "A → B" in out
-    assert "05.07.2026" in out
+    assert "05.07" in out
+
+
+def test_render_alarm_list_shows_multiple_dates():
+    out = fmt.render_alarm_list([_alarm([date(2026, 7, 5), date(2026, 7, 7)])])
+    assert "05.07" in out and "07.07" in out
+
+
+def test_alarm_button_label_compact_with_extra_count():
+    one = fmt.alarm_button_label(_alarm([date(2026, 7, 5)]))
+    assert "05.07" in one and "+" not in one
+    many = fmt.alarm_button_label(_alarm([date(2026, 7, 5), date(2026, 7, 7), date(2026, 7, 9)]))
+    assert "05.07" in many and "+2" in many

@@ -76,7 +76,7 @@ async def cleanup_stale(store: Store, tz: ZoneInfo) -> int:
                 await store.r.srem(key, aid)
                 await store.r.srem("alarms:active", aid)
                 continue
-            if a.travel_date + timedelta(days=2) <= today_local:
+            if max(a.travel_dates) + timedelta(days=2) <= today_local:
                 await store.delete_alarm(aid)
                 n += 1
     return n
@@ -100,17 +100,20 @@ async def run_once(
         if a and a.active:
             alarms.append(a)
 
-    # Build set of (from_id, to_id, date) tuples to query, expanded ±1 day.
+    # Build set of (from_id, to_id, date) tuples to query: every selected day
+    # of every alarm, expanded ±1 day, deduped.
+    today = datetime.now(tz).date()
     queries: set[tuple[int, int, date]] = set()
     names: dict[int, str] = {}
     for a in alarms:
         names[a.from_id] = a.from_name
         names[a.to_id] = a.to_name
-        for delta in (-1, 0, 1):
-            d = a.travel_date + timedelta(days=delta)
-            if d < datetime.now(tz).date():
-                continue
-            queries.add((a.from_id, a.to_id, d))
+        for base in a.travel_dates:
+            for delta in (-1, 0, 1):
+                d = base + timedelta(days=delta)
+                if d < today:
+                    continue
+                queries.add((a.from_id, a.to_id, d))
 
     results: dict[tuple[int, int, date], list[TrainResult]] = {}
     for q in queries:
@@ -129,16 +132,25 @@ async def run_once(
     for a in alarms:
         notified = await store.already_notified(a.id)
         per_day_hits: dict[date, list[TrainResult]] = defaultdict(list)
-        for delta in (-1, 0, 1):
-            d = a.travel_date + timedelta(days=delta)
+        # Unique days to check across all selected dates (±1), deduped so
+        # adjacent picks don't double up.
+        days = {
+            base + timedelta(days=delta)
+            for base in a.travel_dates
+            for delta in (-1, 0, 1)
+        }
+        for d in days:
             trains = results.get((a.from_id, a.to_id, d), [])
             for t in trains:
-                if t.available_seats >= a.passengers and t.train_no not in notified:
+                # Notified set is keyed by day so the same train number on a
+                # different day still alerts.
+                key = f"{d.isoformat()}:{t.train_no}"
+                if t.available_seats >= a.passengers and key not in notified:
                     per_day_hits[d].append(t)
-        new_train_nos: list[str] = []
+        new_keys: list[str] = []
         for d, hits in sorted(per_day_hits.items()):
             await send_telegram(bot_token, a.chat_id, fmt.render_alert(a, d, hits))
-            new_train_nos.extend(t.train_no for t in hits)
-        if new_train_nos:
-            await store.mark_alerted(a.id, new_train_nos)
-            log.info("alarm %s alerted %d trains", a.id, len(new_train_nos))
+            new_keys.extend(f"{d.isoformat()}:{t.train_no}" for t in hits)
+        if new_keys:
+            await store.mark_alerted(a.id, new_keys)
+            log.info("alarm %s alerted %d trains", a.id, len(new_keys))

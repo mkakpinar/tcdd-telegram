@@ -80,18 +80,35 @@ def build_trip_conversation(
         ctx.user_data["to_name"] = station.name
         await q.edit_message_text(f"Nereye: *{station.name}*", parse_mode="Markdown")
         await q.message.reply_text(
-            "Hangi gün?", reply_markup=date_picker_kb(f"{prefix}_d")
+            "Hangi gün(ler)? Birden fazla seçebilirsin, sonra *Onayla*'ya bas.",
+            parse_mode="Markdown",
+            reply_markup=date_picker_kb(f"{prefix}_d"),
         )
         return ASK_DATE
 
     async def picked_date(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+        # Toggle a day in/out of the selection and re-render the keyboard.
         q = update.callback_query
+        iso = q.data.split(":")[-1]
+        selected: set[str] = ctx.user_data.setdefault("dates", set())
+        selected.discard(iso) if iso in selected else selected.add(iso)
         await q.answer()
-        d = date.fromisoformat(q.data.split(":")[-1])
-        ctx.user_data["date"] = d
-        await q.edit_message_text(
-            f"Tarih: *{d.strftime('%d.%m.%Y')}*", parse_mode="Markdown"
+        await q.edit_message_reply_markup(
+            reply_markup=date_picker_kb(f"{prefix}_d", selected)
         )
+        return ASK_DATE
+
+    async def dates_done(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+        q = update.callback_query
+        selected: set[str] = ctx.user_data.get("dates") or set()
+        if not selected:
+            await q.answer("En az bir gün seç.", show_alert=True)
+            return ASK_DATE
+        dates = sorted(date.fromisoformat(s) for s in selected)
+        ctx.user_data["dates"] = dates  # set[str] -> sorted list[date]
+        await q.answer()
+        label = ", ".join(d.strftime("%d.%m.%Y") for d in dates)
+        await q.edit_message_text(f"Tarih(ler): *{label}*", parse_mode="Markdown")
         await q.message.reply_text(
             "Kaç yolcu?", reply_markup=passenger_picker_kb(f"{prefix}_p")
         )
@@ -123,6 +140,7 @@ def build_trip_conversation(
                 MessageHandler(filters.TEXT & ~filters.COMMAND, got_to_text),
             ],
             ASK_DATE: [
+                CallbackQueryHandler(dates_done, pattern=f"^{prefix}_d:datedone$"),
                 CallbackQueryHandler(picked_date, pattern=f"^{prefix}_d:date:"),
             ],
             ASK_PAX: [
@@ -149,27 +167,28 @@ async def _finish_search(
         await msg.reply_text("Saatlik arama limitine ulaştın. Sonra tekrar dene.")
         return ConversationHandler.END
     await msg.reply_text("Arıyorum…")
-    try:
-        trains = await tcdd.search(
-            ud["from_id"],
-            ud["to_id"],
-            ud["date"],
-            ud["pax"],
-            from_name=ud["from_name"],
-            to_name=ud["to_name"],
+    for d in ud["dates"]:
+        try:
+            trains = await tcdd.search(
+                ud["from_id"],
+                ud["to_id"],
+                d,
+                ud["pax"],
+                from_name=ud["from_name"],
+                to_name=ud["to_name"],
+            )
+        except Exception:
+            log.exception("search failed for %s", d)
+            await msg.reply_text(
+                f"{d.strftime('%d.%m.%Y')}: arama sırasında bir sorun oluştu."
+            )
+            continue
+        await msg.reply_markdown(
+            fmt.render_search_results(
+                ud["from_name"], ud["to_name"], d, ud["pax"], trains
+            ),
+            disable_web_page_preview=True,
         )
-    except Exception:
-        log.exception("search failed")
-        await msg.reply_text(
-            "Arama sırasında bir sorun oluştu. Lütfen biraz sonra tekrar dene."
-        )
-        return ConversationHandler.END
-    await msg.reply_markdown(
-        fmt.render_search_results(
-            ud["from_name"], ud["to_name"], ud["date"], ud["pax"], trains
-        ),
-        disable_web_page_preview=True,
-    )
     return ConversationHandler.END
 
 

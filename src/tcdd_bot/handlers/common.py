@@ -25,21 +25,29 @@ def station_picker_kb(stations: list[Station], prefix: str) -> InlineKeyboardMar
     return InlineKeyboardMarkup(rows)
 
 
-def date_picker_kb(prefix: str, days: int = 14) -> InlineKeyboardMarkup:
+def date_picker_kb(
+    prefix: str, selected: "set[str] | None" = None, days: int = 14
+) -> InlineKeyboardMarkup:
+    """Multi-select day picker. `selected` is the set of already-chosen ISO
+    dates (shown with a ✅). A trailing 'Onayla' button confirms the choice."""
+    chosen = set(selected or ())
     today = date.today()
     rows = []
     row = []
     for i in range(days + 1):
         d = today + timedelta(days=i)
-        label = _tr_date_label(d)
+        iso = d.isoformat()
+        label = ("✅ " if iso in chosen else "") + _tr_date_label(d)
         row.append(
-            InlineKeyboardButton(label, callback_data=f"{prefix}:date:{d.isoformat()}")
+            InlineKeyboardButton(label, callback_data=f"{prefix}:date:{iso}")
         )
         if len(row) == 3:
             rows.append(row)
             row = []
     if row:
         rows.append(row)
+    confirm = f"✅ Onayla ({len(chosen)})" if chosen else "Onayla"
+    rows.append([InlineKeyboardButton(confirm, callback_data=f"{prefix}:datedone")])
     return InlineKeyboardMarkup(rows)
 
 

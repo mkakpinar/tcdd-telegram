@@ -13,8 +13,25 @@ def test_tr_date_label_uses_turkish_weekdays():
 
 def test_date_picker_has_no_english_weekday():
     kb = date_picker_kb("s_d", days=7)
-    labels = [btn.text for row in kb.inline_keyboard for btn in row]
-    assert len(labels) == 8  # today + 7
+    buttons = [b for row in kb.inline_keyboard for b in row]
+    day_btns = [b for b in buttons if ":date:" in b.callback_data]
+    assert len(day_btns) == 8  # today + 7
     english = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
-    for label in labels:
-        assert label.split()[0] not in english
+    for b in day_btns:
+        assert b.text.split()[0] not in english
+
+
+def test_date_picker_marks_selected_and_has_confirm():
+    from datetime import date, timedelta
+
+    d1 = date.today().isoformat()
+    d2 = (date.today() + timedelta(days=2)).isoformat()
+    kb = date_picker_kb("s_d", {d1, d2}, days=7)
+    buttons = [b for row in kb.inline_keyboard for b in row]
+    # exactly the two selected day-buttons carry the ✅ mark
+    checked = [b for b in buttons if b.text.startswith("✅") and ":date:" in b.callback_data]
+    assert len(checked) == 2
+    # a single confirm button exists with the datedone callback and the count
+    confirm = [b for b in buttons if b.callback_data == "s_d:datedone"]
+    assert len(confirm) == 1
+    assert "2" in confirm[0].text

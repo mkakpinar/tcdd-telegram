@@ -13,10 +13,10 @@ async def test_cleanup_removes_active_and_paused_stale_keeps_future(store):
     past = date.today() - timedelta(days=3)
     fut = date.today() + timedelta(days=5)
     # user 42: one stale (active), one future
-    await store.create_alarm(42, 1, 2, "A", "B", past, 1)
-    fut_id = await store.create_alarm(42, 1, 2, "A", "B", fut, 1)
+    await store.create_alarm(42, 1, 2, "A", "B", [past], 1)
+    fut_id = await store.create_alarm(42, 1, 2, "A", "B", [fut], 1)
     # user 99: a stale alarm that is PAUSED (not in alarms:active)
-    await store.create_alarm(99, 3, 4, "C", "D", past, 1)
+    await store.create_alarm(99, 3, 4, "C", "D", [past], 1)
     await store.set_paused(99, True)
     # an orphaned reference (set membership with no alarm hash)
     await store.r.sadd("user:42:alarms", "orphan-id")
@@ -60,7 +60,7 @@ async def test_run_once_alerts_then_dedupes(store, monkeypatch):
     monkeypatch.setattr(checker.random, "uniform", lambda a, b: 0)  # no real sleeps
 
     travel = date.today() + timedelta(days=3)
-    aid = await store.create_alarm(42, 1, 2, "A", "B", travel, 2)
+    aid = await store.create_alarm(42, 1, 2, "A", "B", [travel], 2)
     backend = _FakeBackend(hit_day=travel)
 
     await checker.run_once(store, backend, "tok", TZ)
@@ -68,12 +68,33 @@ async def test_run_once_alerts_then_dedupes(store, monkeypatch):
     assert len(sent) == 1
     assert sent[0][0] == 42
     assert "81002" in sent[0][1]
-    assert await store.already_notified(aid) == {"81002"}
+    assert await store.already_notified(aid) == {f"{travel.isoformat()}:81002"}
 
     # second run: same train is already notified -> no new alert
     sent.clear()
     await checker.run_once(store, backend, "tok", TZ)
     assert sent == []
+
+
+async def test_run_once_multi_date_alerts_only_matching_day(store, monkeypatch):
+    sent = []
+
+    async def fake_send(token, chat_id, text):
+        sent.append((chat_id, text))
+
+    monkeypatch.setattr(checker, "send_telegram", fake_send)
+    monkeypatch.setattr(checker.random, "uniform", lambda a, b: 0)
+
+    d1 = date.today() + timedelta(days=3)
+    d2 = date.today() + timedelta(days=7)
+    aid = await store.create_alarm(42, 1, 2, "A", "B", [d1, d2], 1)
+    backend = _FakeBackend(hit_day=d2)  # seats only on the second day
+
+    await checker.run_once(store, backend, "tok", TZ)
+
+    assert len(sent) == 1
+    assert d2.strftime("%d.%m.%Y") in sent[0][1]
+    assert await store.already_notified(aid) == {f"{d2.isoformat()}:81002"}
 
 
 class _Resp:
@@ -154,7 +175,7 @@ async def test_run_once_skips_when_seats_below_passengers(store, monkeypatch):
     monkeypatch.setattr(checker.random, "uniform", lambda a, b: 0)
 
     travel = date.today() + timedelta(days=3)
-    await store.create_alarm(42, 1, 2, "A", "B", travel, 5)  # needs 5 seats
+    await store.create_alarm(42, 1, 2, "A", "B", [travel], 5)  # needs 5 seats
     backend = _FakeBackend(hit_day=travel, seats=2)  # only 2 available
 
     await checker.run_once(store, backend, "tok", TZ)

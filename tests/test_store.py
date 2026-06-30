@@ -3,8 +3,29 @@ from datetime import date, timedelta
 
 async def _mk(store, chat_id=42, days=5):
     return await store.create_alarm(
-        chat_id, 1, 2, "A", "B", date.today() + timedelta(days=days), 2
+        chat_id, 1, 2, "A", "B", [date.today() + timedelta(days=days)], 2
     )
+
+
+async def test_create_alarm_with_multiple_dates(store):
+    d1 = date.today() + timedelta(days=2)
+    d2 = date.today() + timedelta(days=5)
+    aid = await store.create_alarm(42, 1, 2, "A", "B", [d2, d1], 1)  # unsorted in
+    a = await store.get_alarm(aid)
+    assert a.travel_dates == [d1, d2]  # stored sorted
+
+
+async def test_get_alarm_backward_compat_single_date(store):
+    # An alarm written under the old schema (single travel_date field).
+    old = date.today() + timedelta(days=3)
+    await store.r.hset("alarm:legacy1", mapping={
+        "chat_id": "42", "from_id": "1", "to_id": "2",
+        "from_name": "A", "to_name": "B",
+        "travel_date": old.isoformat(), "passengers": "1",
+        "active": "1", "created_at": "", "last_alerted_at": "",
+    })
+    a = await store.get_alarm("legacy1")
+    assert a.travel_dates == [old]
 
 
 async def test_upsert_user_preserves_created_at(store):

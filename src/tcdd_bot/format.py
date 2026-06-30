@@ -64,15 +64,23 @@ def render_alert(alarm: Alarm, day: date, new_trains: list[TrainResult]) -> str:
     return "\n".join(lines)
 
 
+def alarm_button_label(a: Alarm) -> str:
+    """Compact ❌ label for an alarm's delete button (first day, +N if more)."""
+    first = a.travel_dates[0].strftime("%d.%m")
+    extra = f" +{len(a.travel_dates) - 1}" if len(a.travel_dates) > 1 else ""
+    return f"❌ {a.from_name[:10]} → {a.to_name[:10]} {first}{extra}"
+
+
 def render_alarm_list(alarms: list[Alarm]) -> str:
     if not alarms:
         return "Hiç aktif alarmın yok. /alarm ile yeni alarm kur."
     lines = ["🔔 *Aktif alarmların:*", ""]
     for a in alarms:
         status = "▶️" if a.active else "⏸"
+        dates = ", ".join(d.strftime("%d.%m") for d in a.travel_dates)
         lines.append(
             f"{status} `{a.id}` · {a.from_name} → {a.to_name}"
-            f" · {a.travel_date.strftime('%d.%m.%Y')} · {a.passengers} yolcu"
+            f" · {dates} · {a.passengers} yolcu"
         )
     lines += ["", "Bir alarmı iptal etmek için aşağıdaki butona bas."]
     return "\n".join(lines)

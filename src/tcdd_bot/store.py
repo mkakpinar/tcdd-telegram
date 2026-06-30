@@ -33,7 +33,7 @@ class Alarm:
     to_id: int
     from_name: str
     to_name: str
-    travel_date: date
+    travel_dates: list[date]  # one alarm can watch several days
     passengers: int
     active: bool
     created_at: datetime
@@ -102,7 +102,7 @@ class Store:
         to_id: int,
         from_name: str,
         to_name: str,
-        travel_date: date,
+        travel_dates: list[date],
         passengers: int,
     ) -> str:
         aid = uuid.uuid4().hex[:12]
@@ -114,7 +114,7 @@ class Store:
                 "to_id": str(to_id),
                 "from_name": from_name,
                 "to_name": to_name,
-                "travel_date": travel_date.isoformat(),
+                "travel_dates": ",".join(d.isoformat() for d in sorted(travel_dates)),
                 "passengers": str(passengers),
                 "active": "1",
                 "created_at": _now_iso(),
@@ -133,7 +133,7 @@ class Store:
             a = await self.get_alarm(aid)
             if a:
                 out.append(a)
-        out.sort(key=lambda a: a.travel_date)
+        out.sort(key=lambda a: a.travel_dates[0])
         return out
 
     async def get_alarm(self, aid: str) -> Alarm | None:
@@ -141,6 +141,13 @@ class Store:
         if not h:
             return None
         try:
+            raw_dates = h.get("travel_dates")
+            if raw_dates:
+                travel_dates = [date.fromisoformat(s) for s in raw_dates.split(",") if s]
+            elif h.get("travel_date"):  # backward-compat: old single-date alarms
+                travel_dates = [date.fromisoformat(h["travel_date"])]
+            else:
+                return None
             return Alarm(
                 id=aid,
                 chat_id=int(h["chat_id"]),
@@ -148,7 +155,7 @@ class Store:
                 to_id=int(h["to_id"]),
                 from_name=h["from_name"],
                 to_name=h["to_name"],
-                travel_date=date.fromisoformat(h["travel_date"]),
+                travel_dates=travel_dates,
                 passengers=int(h["passengers"]),
                 active=h.get("active") == "1",
                 created_at=_parse_iso(h.get("created_at")) or datetime.min,
