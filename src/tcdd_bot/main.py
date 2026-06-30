@@ -136,6 +136,14 @@ def main() -> None:
     app = (
         Application.builder()
         .token(settings.bot_token)
+        # PTB's default read/write timeout is 5s, too tight for the fra<->Telegram
+        # hop — a slow API call would drop a conversation step (e.g. "Nereye?")
+        # and make the flow look stuck. Give outgoing calls more headroom.
+        .connect_timeout(10.0)
+        .read_timeout(20.0)
+        .write_timeout(20.0)
+        .pool_timeout(10.0)
+        .connection_pool_size(8)
         .rate_limiter(AIORateLimiter())
         .post_init(_post_init)
         .post_shutdown(_post_shutdown)
