@@ -111,12 +111,20 @@ async def _post_shutdown(app: Application) -> None:
         await store.aclose()
 
 
-def main() -> None:
-    settings = load_settings()
+def configure_logging(level: str) -> None:
     logging.basicConfig(
-        level=settings.log_level,
+        level=level,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
+    # httpx logs every request line at INFO, including the full Telegram API
+    # URL — which embeds the bot token (api.telegram.org/bot<TOKEN>/...). Pin it
+    # to WARNING so the token never lands in logs (Fly, screenshots, etc.).
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
+
+def main() -> None:
+    settings = load_settings()
+    configure_logging(settings.log_level)
     app = (
         Application.builder()
         .token(settings.bot_token)

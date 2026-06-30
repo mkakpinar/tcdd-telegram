@@ -8,7 +8,6 @@ src/tcdd_bot/main.py.
 from __future__ import annotations
 
 import asyncio
-import logging
 import sys
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -17,16 +16,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from tcdd_bot.checker import run_once  # noqa: E402
 from tcdd_bot.config import load_settings  # noqa: E402
+from tcdd_bot.main import configure_logging  # noqa: E402
 from tcdd_bot.store import Store  # noqa: E402
 from tcdd_bot.tcdd import build_backend  # noqa: E402
 
 
 async def main() -> None:
     settings = load_settings()
-    logging.basicConfig(
-        level=settings.log_level,
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-    )
+    configure_logging(settings.log_level)
     store = Store(settings.redis_url)
     tcdd = build_backend(settings.tcdd_mode)
     tz = ZoneInfo(settings.timezone)
