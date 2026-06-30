@@ -7,6 +7,7 @@ primary_region = "fra"
 [env]
   TIMEZONE = "Europe/Istanbul"
   LOG_LEVEL = "INFO"
+  CHECK_INTERVAL_MIN = "5"
 
 # Long-running poller: always restart it. The default on-failure/max_retries=10
 # policy would stop the bot permanently after 10 crashes.
