@@ -12,7 +12,7 @@ def make_settings(**overrides) -> Settings:
         bot_token="t", redis_url="redis://x", admin_chat_id=None,
         allowed_chat_ids=frozenset(), timezone="Europe/Istanbul",
         log_level="INFO", max_alarms_per_user=5, search_rate_per_hour=10,
-        tcdd_mode="stub",
+        check_interval_min=10, tcdd_mode="stub",
     )
     base.update(overrides)
     return Settings(**base)

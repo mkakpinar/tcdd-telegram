@@ -23,3 +23,12 @@ def test_load_settings_allowlist(monkeypatch):
 
     monkeypatch.delenv("ALLOWED_CHAT_IDS")
     assert load_settings().allowed_chat_ids == frozenset()
+
+
+def test_check_interval_default_and_override(monkeypatch):
+    monkeypatch.setenv("BOT_TOKEN", "x")
+    monkeypatch.setenv("REDIS_URL", "redis://x")
+    monkeypatch.delenv("CHECK_INTERVAL_MIN", raising=False)
+    assert load_settings().check_interval_min == 10
+    monkeypatch.setenv("CHECK_INTERVAL_MIN", "5")
+    assert load_settings().check_interval_min == 5

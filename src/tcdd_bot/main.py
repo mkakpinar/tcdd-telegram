@@ -24,7 +24,7 @@ from .stations import StationCatalog
 from .store import Store
 from .tcdd import build_backend
 
-CHECKER_INTERVAL_S = 30 * 60  # 30 minutes
+# Default alarm-checker interval (minutes); override with CHECK_INTERVAL_MIN.
 
 
 def _make_access_gate(settings: Settings):
@@ -87,19 +87,20 @@ async def _post_init(app: Application) -> None:
     app.bot_data["tz"] = ZoneInfo(settings.timezone)
 
     app.bot_data["heartbeat_task"] = asyncio.create_task(_heartbeat_loop(app))
-    # Schedule the alarm checker: first run after a random 1–15 min delay,
-    # then every 30 min thereafter. The random first delay spreads load
-    # across bot restarts and gives TCDD natural jitter.
-    first_delay = random.uniform(60, 15 * 60)
+    # Schedule the alarm checker every CHECK_INTERVAL_MIN. The first run uses a
+    # short random delay (30s–3m, capped under the interval) to stagger startup
+    # and give TCDD natural jitter, without delaying a fast interval.
+    interval_s = settings.check_interval_min * 60
+    first_delay = random.uniform(30, min(180, interval_s))
     app.job_queue.run_repeating(
         _check_alarms_job,
-        interval=CHECKER_INTERVAL_S,
+        interval=interval_s,
         first=first_delay,
         name="check-alarms",
     )
     logging.info(
         "Bot ready (tcdd=%s); checker scheduled in %.0fs, then every %ds",
-        settings.tcdd_mode, first_delay, CHECKER_INTERVAL_S,
+        settings.tcdd_mode, first_delay, interval_s,
     )
 
 

@@ -14,8 +14,9 @@ Interactive Telegram bot for TCDD train ticket search + alarms.
 
 - **Bot** (`src/tcdd_bot/main.py`) — `python-telegram-bot` long-polling on Fly.io.
 - **Checker** (`src/tcdd_bot/checker.py`) — runs inside the bot process via PTB's
-  `JobQueue`, every 30 min with a random initial jitter. Same code is also
-  callable as a one-off via `scripts/check_alarms.py`.
+  `JobQueue`, every `CHECK_INTERVAL_MIN` minutes (default 10) with a random
+  initial jitter. Same code is also callable as a one-off via
+  `scripts/check_alarms.py`.
 - **State** — Fly.io managed Upstash Redis (Pay-as-you-go, native protocol).
 - **TCDD client** — `src/tcdd_bot/tcdd.py`. Two backends:
   - `LiveBackend` (default): real TCDD JSON API at `web-api-prod-ytp.tcddtasimacilik.gov.tr/tms`. Uses `curl_cffi` with Chrome ja3 impersonation because TCDD's edge ja3-fingerprints non-browser clients.
