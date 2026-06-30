@@ -29,11 +29,8 @@ def build_trip_conversation(
     command: str,
     prefix: str,
     finish: Callable[[Update, ContextTypes.DEFAULT_TYPE], Awaitable[int]],
-    pre_check: Callable[[Update, ContextTypes.DEFAULT_TYPE], Awaitable[bool]] | None = None,
 ) -> ConversationHandler:
     async def entry(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
-        if pre_check and not await pre_check(update, ctx):
-            return ConversationHandler.END
         ctx.user_data.clear()
         ctx.user_data["mode"] = prefix
         await update.message.reply_text("Nereden? (örn: Söğütlüçeşme)")
@@ -140,8 +137,17 @@ async def _finish_search(
     update: Update, ctx: ContextTypes.DEFAULT_TYPE
 ) -> int:
     ud = ctx.user_data
+    settings = ctx.application.bot_data["settings"]
+    store = ctx.application.bot_data["store"]
     tcdd: TcddBackend = ctx.application.bot_data["tcdd"]
     msg = update.callback_query.message
+    # Charge the hourly rate limit here — at the actual TCDD query — so that
+    # starting and abandoning /search does not consume quota.
+    if not await store.check_search_rate(
+        update.effective_chat.id, settings.search_rate_per_hour
+    ):
+        await msg.reply_text("Saatlik arama limitine ulaştın. Sonra tekrar dene.")
+        return ConversationHandler.END
     await msg.reply_text("Arıyorum…")
     try:
         trains = await tcdd.search(
@@ -165,20 +171,5 @@ async def _finish_search(
     return ConversationHandler.END
 
 
-async def _rate_limit_check(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> bool:
-    settings = ctx.application.bot_data["settings"]
-    store = ctx.application.bot_data["store"]
-    ok = await store.check_search_rate(
-        update.effective_chat.id, settings.search_rate_per_hour
-    )
-    if not ok:
-        await update.message.reply_text(
-            "Saatlik arama limitine ulaştın. Sonra tekrar dene."
-        )
-    return ok
-
-
 def register(app) -> None:
-    app.add_handler(
-        build_trip_conversation("search", "s", _finish_search, _rate_limit_check)
-    )
+    app.add_handler(build_trip_conversation("search", "s", _finish_search))

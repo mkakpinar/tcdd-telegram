@@ -8,16 +8,51 @@ import logging
 import random
 from zoneinfo import ZoneInfo
 
-from telegram.ext import Application, ContextTypes
+from telegram import Update
+from telegram.ext import (
+    Application,
+    ApplicationHandlerStop,
+    ContextTypes,
+    TypeHandler,
+)
 
 from .checker import run_once as checker_run_once
-from .config import load_settings
+from .config import Settings, load_settings
 from .handlers import alarm, search, start
 from .stations import StationCatalog
 from .store import Store
 from .tcdd import build_backend
 
 CHECKER_INTERVAL_S = 30 * 60  # 30 minutes
+
+
+def _make_access_gate(settings: Settings):
+    """Global gate (handler group -1): if ALLOWED_CHAT_IDS is set, only those
+    chat IDs (and ADMIN_CHAT_ID) may use the bot. Empty list = open to all.
+    Stops propagation for everyone else so commands, conversations, and button
+    callbacks are all blocked by this single handler."""
+    allowed = settings.allowed_chat_ids
+    admin = settings.admin_chat_id
+
+    async def gate(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+        if not allowed:
+            return
+        chat = update.effective_chat
+        cid = chat.id if chat else None
+        if cid in allowed or (admin is not None and cid == admin):
+            return
+        logging.info("blocked unauthorized chat_id=%s", cid)
+        if update.callback_query:
+            await update.callback_query.answer()
+        if update.effective_message:
+            await update.effective_message.reply_text(
+                "⛔️ Bu botu kullanma yetkin yok.\n"
+                f"Chat ID'in: {cid}\n"
+                "Erişim için yöneticiye bu numarayı ilet."
+            )
+        raise ApplicationHandlerStop
+
+    return gate
 
 
 async def _heartbeat_loop(app: Application) -> None:
@@ -67,6 +102,15 @@ async def _post_init(app: Application) -> None:
     )
 
 
+async def _post_shutdown(app: Application) -> None:
+    tcdd = app.bot_data.get("tcdd")
+    if tcdd is not None and hasattr(tcdd, "aclose"):
+        await tcdd.aclose()
+    store = app.bot_data.get("store")
+    if store is not None:
+        await store.aclose()
+
+
 def main() -> None:
     settings = load_settings()
     logging.basicConfig(
@@ -77,9 +121,11 @@ def main() -> None:
         Application.builder()
         .token(settings.bot_token)
         .post_init(_post_init)
+        .post_shutdown(_post_shutdown)
         .build()
     )
     app.bot_data["settings"] = settings
+    app.add_handler(TypeHandler(Update, _make_access_gate(settings)), group=-1)
     start.register(app)
     search.register(app)
     alarm.register(app)

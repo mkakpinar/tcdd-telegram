@@ -53,6 +53,17 @@ Run the checker locally:
 SKIP_JITTER=1 python scripts/check_alarms.py
 ```
 
+### Tests
+
+```bash
+pip install -e '.[dev]'
+pytest
+```
+
+Unit tests (no network / no Redis — uses `fakeredis` and a stub backend) cover
+config parsing, station fuzzy-match, TCDD response parsing, message rendering,
+the Redis store, the alarm checker, and the access gate.
+
 ### 4. Deploy bot to Fly.io
 
 ```bash
@@ -73,6 +84,25 @@ To run it ad-hoc against your Fly Redis (e.g. for debugging):
 ```bash
 fly ssh console -a tcdd-telegram -C "python scripts/check_alarms.py"
 ```
+
+## Access control
+
+By default the bot is **open** — anyone who finds it can use it. To restrict it
+to specific people, set `ALLOWED_CHAT_IDS` to a comma-separated list of Telegram
+chat IDs:
+
+```bash
+flyctl secrets set ALLOWED_CHAT_IDS=12345,67890
+```
+
+- Empty / unset ⇒ open to everyone.
+- When set, only those chat IDs (plus `ADMIN_CHAT_ID`, always allowed) may use
+  the bot. Everyone else gets a "not authorized" reply that includes their own
+  chat ID, and the attempt is logged.
+- **Finding a chat ID**: have the person message the bot once and read the
+  `blocked unauthorized chat_id=…` line in `fly logs`, ask them for the ID the
+  bot replied with, or use `@userinfobot` on Telegram. Append it to the list to
+  add them.
 
 ## Notes
 

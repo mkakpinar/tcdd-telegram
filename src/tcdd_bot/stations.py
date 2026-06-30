@@ -33,7 +33,7 @@ class Station:
 def _normalize(s: str) -> str:
     s = unicodedata.normalize("NFKD", s)
     s = "".join(c for c in s if not unicodedata.combining(c))
-    return s.upper().replace("İ", "I").replace("I", "I")
+    return s.upper().replace("İ", "I")
 
 
 class StationCatalog:

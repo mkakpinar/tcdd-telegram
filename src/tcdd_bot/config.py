@@ -10,11 +10,18 @@ class Settings:
     bot_token: str
     redis_url: str
     admin_chat_id: int | None
+    allowed_chat_ids: frozenset[int]  # empty = open to everyone
     timezone: str
     log_level: str
     max_alarms_per_user: int
     search_rate_per_hour: int
     tcdd_mode: str  # "stub" or "live"
+
+
+def _parse_chat_ids(raw: str | None) -> frozenset[int]:
+    if not raw:
+        return frozenset()
+    return frozenset(int(part) for part in raw.split(",") if part.strip())
 
 
 def load_settings() -> Settings:
@@ -23,6 +30,7 @@ def load_settings() -> Settings:
         bot_token=os.environ["BOT_TOKEN"],
         redis_url=os.environ["REDIS_URL"],
         admin_chat_id=int(admin) if admin else None,
+        allowed_chat_ids=_parse_chat_ids(os.getenv("ALLOWED_CHAT_IDS")),
         timezone=os.getenv("TIMEZONE", "Europe/Istanbul"),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         max_alarms_per_user=int(os.getenv("MAX_ALARMS_PER_USER", "5")),

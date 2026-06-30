@@ -43,16 +43,21 @@ async def send_telegram(token: str, chat_id: int, text: str) -> None:
 
 
 async def cleanup_stale(store: Store, tz: ZoneInfo) -> int:
+    # Scan every user's alarm set (not just alarms:active) so that paused
+    # alarms are also reaped once their travel date passes, and orphaned
+    # references (alarm hash already gone) are pruned.
     today_local = datetime.now(tz).date()
     n = 0
-    for aid in await store.active_alarm_ids():
-        a = await store.get_alarm(aid)
-        if not a:
-            await store.r.srem("alarms:active", aid)
-            continue
-        if a.travel_date + timedelta(days=2) <= today_local:
-            await store.delete_alarm(aid)
-            n += 1
+    async for key in store.r.scan_iter(match="user:*:alarms"):
+        for aid in await store.r.smembers(key):
+            a = await store.get_alarm(aid)
+            if not a:
+                await store.r.srem(key, aid)
+                await store.r.srem("alarms:active", aid)
+                continue
+            if a.travel_date + timedelta(days=2) <= today_local:
+                await store.delete_alarm(aid)
+                n += 1
     return n
 
 
