@@ -8,6 +8,14 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from ..stations import Station
 
+# Turkish weekday abbreviations (Mon..Sun). strftime("%a") would emit English
+# under the container's C locale, so we map by weekday() instead.
+_TR_GUNLER = ("Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz")
+
+
+def _tr_date_label(d: date) -> str:
+    return f"{_TR_GUNLER[d.weekday()]} {d.strftime('%d.%m')}"
+
 
 def station_picker_kb(stations: list[Station], prefix: str) -> InlineKeyboardMarkup:
     rows = [
@@ -23,7 +31,7 @@ def date_picker_kb(prefix: str, days: int = 14) -> InlineKeyboardMarkup:
     row = []
     for i in range(days + 1):
         d = today + timedelta(days=i)
-        label = d.strftime("%a %d.%m")
+        label = _tr_date_label(d)
         row.append(
             InlineKeyboardButton(label, callback_data=f"{prefix}:date:{d.isoformat()}")
         )

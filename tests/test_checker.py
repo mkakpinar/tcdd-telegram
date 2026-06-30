@@ -76,6 +76,74 @@ async def test_run_once_alerts_then_dedupes(store, monkeypatch):
     assert sent == []
 
 
+class _Resp:
+    def __init__(self, status, body=None, text=""):
+        self.status_code = status
+        self._body = body or {}
+        self.text = text
+
+    def json(self):
+        return self._body
+
+
+class _FakeHttpClient:
+    def __init__(self, outcomes):
+        self.outcomes = list(outcomes)
+        self.calls = 0
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def post(self, url, json=None):
+        self.calls += 1
+        o = self.outcomes.pop(0)
+        if isinstance(o, Exception):
+            raise o
+        return o
+
+
+async def _instant(*a, **k):
+    return None
+
+
+async def test_send_telegram_retries_5xx_then_succeeds(monkeypatch):
+    monkeypatch.setattr("asyncio.sleep", _instant)
+    fake = _FakeHttpClient([_Resp(500), Exception("conn reset"), _Resp(200, {"ok": True})])
+    monkeypatch.setattr(checker.httpx, "AsyncClient", lambda *a, **k: fake)
+    await checker.send_telegram("tok", 1, "hi")
+    assert fake.calls == 3
+
+
+async def test_send_telegram_honors_429_retry_after(monkeypatch):
+    monkeypatch.setattr("asyncio.sleep", _instant)
+    fake = _FakeHttpClient([
+        _Resp(429, {"parameters": {"retry_after": 0}}),
+        _Resp(200, {"ok": True}),
+    ])
+    monkeypatch.setattr(checker.httpx, "AsyncClient", lambda *a, **k: fake)
+    await checker.send_telegram("tok", 1, "hi")
+    assert fake.calls == 2
+
+
+async def test_send_telegram_no_retry_on_client_error(monkeypatch):
+    monkeypatch.setattr("asyncio.sleep", _instant)
+    fake = _FakeHttpClient([_Resp(403, text="bot was blocked by the user")])
+    monkeypatch.setattr(checker.httpx, "AsyncClient", lambda *a, **k: fake)
+    await checker.send_telegram("tok", 1, "hi")
+    assert fake.calls == 1  # 403 is terminal
+
+
+async def test_send_telegram_gives_up_after_max(monkeypatch):
+    monkeypatch.setattr("asyncio.sleep", _instant)
+    fake = _FakeHttpClient([_Resp(500)] * checker.MAX_SEND_ATTEMPTS)
+    monkeypatch.setattr(checker.httpx, "AsyncClient", lambda *a, **k: fake)
+    await checker.send_telegram("tok", 1, "hi")  # must not raise
+    assert fake.calls == checker.MAX_SEND_ATTEMPTS
+
+
 async def test_run_once_skips_when_seats_below_passengers(store, monkeypatch):
     sent = []
 

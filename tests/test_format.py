@@ -51,9 +51,9 @@ def _alarm():
 
 def test_render_alert():
     out = fmt.render_alert(_alarm(), date(2026, 7, 5), [_train()])
-    assert "BİLET BULUNDU" in out
+    assert "BOŞ YER BULUNDU" in out
     assert "12345" in out
-    assert "HEMEN GİR" in out
+    assert "Hemen bilet al" in out
 
 
 def test_render_alarm_list_empty():

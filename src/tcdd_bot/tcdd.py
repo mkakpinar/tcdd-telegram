@@ -28,6 +28,8 @@ TMS_URL = (
     "/tms/train/train-availability?environment=dev&userId=1"
 )
 
+MAX_SEARCH_ATTEMPTS = 3
+
 # JWT extracted from the TCDD production JS bundle. The exp claim is in the
 # past, but the TCDD gateway doesn't validate it — the page in production
 # uses the same hardcoded token. If TCDD ever rotates it, re-extract from
@@ -152,11 +154,32 @@ class LiveBackend:
             "origin": "https://ebilet.tcddtasimacilik.gov.tr",
             "referer": "https://ebilet.tcddtasimacilik.gov.tr/",
         }
-        r = await self._session.post(TMS_URL, json=payload, headers=headers)
-        if r.status_code >= 400:
-            log.warning("TCDD search %s -> %s", r.status_code, r.text[:200])
-            raise RuntimeError(f"TCDD HTTP {r.status_code}")
-        return _parse_response(r.json())
+        # TCDD's edge is flaky (WAF blips, timeouts, 5xx). Retry transient
+        # failures with exponential backoff; surface client errors (4xx) at once.
+        last_exc: Exception | None = None
+        for attempt in range(1, MAX_SEARCH_ATTEMPTS + 1):
+            try:
+                r = await self._session.post(TMS_URL, json=payload, headers=headers)
+            except Exception as exc:  # network / timeout / TLS
+                last_exc = exc
+                log.warning(
+                    "TCDD search attempt %d/%d errored: %r",
+                    attempt, MAX_SEARCH_ATTEMPTS, exc,
+                )
+            else:
+                if r.status_code < 400:
+                    return _parse_response(r.json())
+                if r.status_code < 500 and r.status_code != 429:
+                    log.warning("TCDD search %s -> %s", r.status_code, r.text[:200])
+                    raise RuntimeError(f"TCDD HTTP {r.status_code}")
+                last_exc = RuntimeError(f"TCDD HTTP {r.status_code}")
+                log.warning(
+                    "TCDD search attempt %d/%d -> HTTP %s",
+                    attempt, MAX_SEARCH_ATTEMPTS, r.status_code,
+                )
+            if attempt < MAX_SEARCH_ATTEMPTS:
+                await asyncio.sleep(min(8.0, 0.5 * 2 ** (attempt - 1)) + random.uniform(0, 0.5))
+        raise last_exc or RuntimeError("TCDD search failed")
 
 
 def _parse_response(data: dict) -> list[TrainResult]:

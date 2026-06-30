@@ -3,12 +3,47 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from tcdd_bot import tcdd
 from tcdd_bot.tcdd import (
+    MAX_SEARCH_ATTEMPTS,
+    LiveBackend,
     StubBackend,
     _epoch_ms_to_dt,
     _parse_response,
     build_backend,
 )
+
+
+class _FakeResp:
+    def __init__(self, status, body=None, text=""):
+        self.status_code = status
+        self._body = body or {}
+        self.text = text
+
+    def json(self):
+        return self._body
+
+
+class _FakeSession:
+    """Returns queued responses/exceptions for successive .post() calls."""
+
+    def __init__(self, outcomes):
+        self.outcomes = list(outcomes)
+        self.calls = 0
+
+    async def post(self, url, json=None, headers=None):
+        self.calls += 1
+        o = self.outcomes.pop(0)
+        if isinstance(o, Exception):
+            raise o
+        return o
+
+    async def close(self):
+        pass
+
+
+async def _instant_sleep(*a, **k):
+    return None
 
 
 def _train(number, dep_ms, arr_ms, cabins):
@@ -90,6 +125,34 @@ def test_epoch_conversion_none():
 def test_build_backend_stub():
     assert isinstance(build_backend("stub"), StubBackend)
     assert isinstance(build_backend("anything-not-live"), StubBackend)
+
+
+async def test_live_search_retries_transient_then_succeeds(monkeypatch):
+    monkeypatch.setattr("asyncio.sleep", _instant_sleep)
+    be = LiveBackend()
+    good = _FakeResp(200, _wrap([_train("1", 1000, 2000, [("EKONOMİ", 3)])]))
+    be._session = _FakeSession([_FakeResp(503, text="busy"), Exception("timeout"), good])
+    res = await be.search(1, 2, date(2026, 7, 5), 1)
+    assert be._session.calls == 3
+    assert [t.train_no for t in res] == ["1"]
+
+
+async def test_live_search_does_not_retry_client_error(monkeypatch):
+    monkeypatch.setattr("asyncio.sleep", _instant_sleep)
+    be = LiveBackend()
+    be._session = _FakeSession([_FakeResp(400, text="bad"), _FakeResp(200, _wrap([]))])
+    with pytest.raises(RuntimeError):
+        await be.search(1, 2, date(2026, 7, 5), 1)
+    assert be._session.calls == 1  # 4xx is not retried
+
+
+async def test_live_search_gives_up_after_max_attempts(monkeypatch):
+    monkeypatch.setattr("asyncio.sleep", _instant_sleep)
+    be = LiveBackend()
+    be._session = _FakeSession([_FakeResp(502)] * MAX_SEARCH_ATTEMPTS)
+    with pytest.raises(RuntimeError):
+        await be.search(1, 2, date(2026, 7, 5), 1)
+    assert be._session.calls == MAX_SEARCH_ATTEMPTS
 
 
 async def test_stub_backend_deterministic_and_wheelchair_free():

@@ -49,7 +49,7 @@ def render_search_results(
 def render_alert(alarm: Alarm, day: date, new_trains: list[TrainResult]) -> str:
     link = tcdd_deeplink(alarm.from_name, alarm.to_name, day)
     lines = [
-        "🚨 *BİLET BULUNDU!*",
+        "🚨 *BOŞ YER BULUNDU!*",
         f"🚂 {alarm.from_name} → {alarm.to_name}",
         f"📅 {day.strftime('%d.%m.%Y')}  ·  👥 {alarm.passengers} yolcu",
         "",
@@ -60,7 +60,7 @@ def render_alert(alarm: Alarm, day: date, new_trains: list[TrainResult]) -> str:
             f"• {t.train_no} · {t.departure_time.strftime('%H:%M')}"
             f" · {t.available_seats} koltuk ({cabins})"
         )
-    lines += ["", f"🔗 {link}", "", "HEMEN GİR!"]
+    lines += ["", f"🔗 {link}", "", "Hemen bilet al! 🎫"]
     return "\n".join(lines)
 
 
@@ -74,5 +74,5 @@ def render_alarm_list(alarms: list[Alarm]) -> str:
             f"{status} `{a.id}` · {a.from_name} → {a.to_name}"
             f" · {a.travel_date.strftime('%d.%m.%Y')} · {a.passengers} yolcu"
         )
-    lines += ["", "İptal: bir alarmı silmek için aşağıdaki butonlardan birine bas."]
+    lines += ["", "Bir alarmı iptal etmek için aşağıdaki butona bas."]
     return "\n".join(lines)

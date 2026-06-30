@@ -8,6 +8,11 @@ primary_region = "fra"
   TIMEZONE = "Europe/Istanbul"
   LOG_LEVEL = "INFO"
 
+# Long-running poller: always restart it. The default on-failure/max_retries=10
+# policy would stop the bot permanently after 10 crashes.
+[[restart]]
+  policy = "always"
+
 [[vm]]
   cpu_kind = "shared"
   cpus = 1

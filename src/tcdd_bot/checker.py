@@ -27,19 +27,40 @@ from .tcdd import TcddBackend, TrainResult
 log = logging.getLogger(__name__)
 
 
+MAX_SEND_ATTEMPTS = 3
+
+
 async def send_telegram(token: str, chat_id: int, text: str) -> None:
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "Markdown",
+        "disable_web_page_preview": True,
+    }
     async with httpx.AsyncClient(timeout=15.0) as client:
-        r = await client.post(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            json={
-                "chat_id": chat_id,
-                "text": text,
-                "parse_mode": "Markdown",
-                "disable_web_page_preview": True,
-            },
-        )
-        if r.status_code >= 400:
-            log.warning("Telegram send failed %s: %s", r.status_code, r.text[:200])
+        for attempt in range(1, MAX_SEND_ATTEMPTS + 1):
+            try:
+                r = await client.post(url, json=payload)
+            except Exception as exc:
+                log.warning("Telegram send attempt %d errored: %r", attempt, exc)
+            else:
+                if r.status_code < 400:
+                    return
+                if r.status_code == 429:
+                    # Respect Telegram's requested cool-off, then retry.
+                    retry_after = (r.json().get("parameters") or {}).get("retry_after", 1)
+                    log.warning("Telegram 429, retry_after=%s", retry_after)
+                    await asyncio.sleep(float(retry_after))
+                    continue
+                if r.status_code < 500:
+                    # e.g. user blocked the bot — retrying won't help.
+                    log.warning("Telegram send failed %s: %s", r.status_code, r.text[:200])
+                    return
+                log.warning("Telegram send attempt %d -> HTTP %s", attempt, r.status_code)
+            if attempt < MAX_SEND_ATTEMPTS:
+                await asyncio.sleep(0.5 * 2 ** (attempt - 1))
+        log.warning("Telegram send gave up after %d attempts (chat %s)", MAX_SEND_ATTEMPTS, chat_id)
 
 
 async def cleanup_stale(store: Store, tz: ZoneInfo) -> int:

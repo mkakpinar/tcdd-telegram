@@ -83,7 +83,9 @@ async def clear_alarms(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 async def pause(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     store = ctx.application.bot_data["store"]
     await store.set_paused(update.effective_chat.id, True)
-    await update.message.reply_text("⏸ Alarmlar duraklatıldı. /resume ile aç.")
+    await update.message.reply_text(
+        "⏸ Alarmların duraklatıldı. /resume ile tekrar başlatabilirsin."
+    )
 
 
 async def resume(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:

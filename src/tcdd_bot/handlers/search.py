@@ -158,9 +158,11 @@ async def _finish_search(
             from_name=ud["from_name"],
             to_name=ud["to_name"],
         )
-    except Exception as exc:
+    except Exception:
         log.exception("search failed")
-        await msg.reply_text(f"TCDD arama hatası: {exc}")
+        await msg.reply_text(
+            "Arama sırasında bir sorun oluştu. Lütfen biraz sonra tekrar dene."
+        )
         return ConversationHandler.END
     await msg.reply_markdown(
         fmt.render_search_results(

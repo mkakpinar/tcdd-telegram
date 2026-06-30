@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 from telegram import Update
 from telegram.ext import (
+    AIORateLimiter,
     Application,
     ApplicationHandlerStop,
     ContextTypes,
@@ -46,9 +47,9 @@ def _make_access_gate(settings: Settings):
             await update.callback_query.answer()
         if update.effective_message:
             await update.effective_message.reply_text(
-                "⛔️ Bu botu kullanma yetkin yok.\n"
+                "⛔️ Bu botu kullanma iznin yok.\n"
                 f"Chat ID'in: {cid}\n"
-                "Erişim için yöneticiye bu numarayı ilet."
+                "Erişim için bu numarayı yöneticiye ilet."
             )
         raise ApplicationHandlerStop
 
@@ -85,7 +86,7 @@ async def _post_init(app: Application) -> None:
     app.bot_data["tcdd"] = build_backend(settings.tcdd_mode)
     app.bot_data["tz"] = ZoneInfo(settings.timezone)
 
-    asyncio.create_task(_heartbeat_loop(app))
+    app.bot_data["heartbeat_task"] = asyncio.create_task(_heartbeat_loop(app))
     # Schedule the alarm checker: first run after a random 1–15 min delay,
     # then every 30 min thereafter. The random first delay spreads load
     # across bot restarts and gives TCDD natural jitter.
@@ -103,6 +104,13 @@ async def _post_init(app: Application) -> None:
 
 
 async def _post_shutdown(app: Application) -> None:
+    task = app.bot_data.get("heartbeat_task")
+    if task is not None:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
     tcdd = app.bot_data.get("tcdd")
     if tcdd is not None and hasattr(tcdd, "aclose"):
         await tcdd.aclose()
@@ -128,6 +136,7 @@ def main() -> None:
     app = (
         Application.builder()
         .token(settings.bot_token)
+        .rate_limiter(AIORateLimiter())
         .post_init(_post_init)
         .post_shutdown(_post_shutdown)
         .build()
