@@ -83,6 +83,14 @@ async def test_notified_dedupe(store):
     assert await store.already_notified(aid) == {"81002", "81032", "90000"}
 
 
+async def test_checker_degraded_flag(store):
+    assert await store.is_checker_degraded() is False  # default
+    await store.set_checker_degraded(True)
+    assert await store.is_checker_degraded() is True
+    await store.set_checker_degraded(False)
+    assert await store.is_checker_degraded() is False
+
+
 async def test_clear_user_alarms(store):
     await _mk(store, days=5)
     await _mk(store, days=6)

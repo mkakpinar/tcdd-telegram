@@ -82,8 +82,35 @@ async def cleanup_stale(store: Store, tz: ZoneInfo) -> int:
     return n
 
 
+async def _update_health(
+    store: Store, bot_token: str, admin_chat_id: int | None, degraded: bool
+) -> None:
+    """Alert the admin only on a health transition (down/recovered), so it
+    doesn't spam every cycle while TCDD is down."""
+    was = await store.is_checker_degraded()
+    if degraded == was:
+        return
+    await store.set_checker_degraded(degraded)
+    if not admin_chat_id:
+        return
+    if degraded:
+        await send_telegram(
+            bot_token, admin_chat_id,
+            "⚠️ TCDD'ye ulaşılamıyor — alarm kontrolü şu an çalışmıyor olabilir.",
+        )
+    else:
+        await send_telegram(
+            bot_token, admin_chat_id,
+            "✅ TCDD tekrar erişilebilir — alarm kontrolü normale döndü.",
+        )
+
+
 async def run_once(
-    store: Store, tcdd: TcddBackend, bot_token: str, tz: ZoneInfo
+    store: Store,
+    tcdd: TcddBackend,
+    bot_token: str,
+    tz: ZoneInfo,
+    admin_chat_id: int | None = None,
 ) -> None:
     cleaned = await cleanup_stale(store, tz)
     if cleaned:
@@ -116,6 +143,7 @@ async def run_once(
                 queries.add((a.from_id, a.to_id, d))
 
     results: dict[tuple[int, int, date], list[TrainResult]] = {}
+    failures = 0
     for q in queries:
         try:
             results[q] = await tcdd.search(
@@ -127,7 +155,12 @@ async def run_once(
         except Exception:
             log.exception("search failed for %s", q)
             results[q] = []
+            failures += 1
         await asyncio.sleep(random.uniform(2.0, 6.0))
+
+    # Health: if we ran queries and every one failed, TCDD is unreachable.
+    if queries:
+        await _update_health(store, bot_token, admin_chat_id, failures == len(queries))
 
     for a in alarms:
         notified = await store.already_notified(a.id)

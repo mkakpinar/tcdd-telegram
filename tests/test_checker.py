@@ -165,6 +165,40 @@ async def test_send_telegram_gives_up_after_max(monkeypatch):
     assert fake.calls == checker.MAX_SEND_ATTEMPTS
 
 
+class _DownBackend:
+    async def search(self, *a, **k):
+        raise RuntimeError("WAF 403")
+
+
+async def test_run_once_alerts_admin_when_tcdd_down_then_recovers(store, monkeypatch):
+    notes = []
+
+    async def fake_send(token, chat_id, text):
+        notes.append((chat_id, text))
+
+    monkeypatch.setattr(checker, "send_telegram", fake_send)
+    monkeypatch.setattr(checker.random, "uniform", lambda a, b: 0)
+
+    travel = date.today() + timedelta(days=3)
+    await store.create_alarm(42, 1, 2, "A", "B", [travel], 1)
+
+    # all searches fail -> degraded + admin alerted once
+    await checker.run_once(store, _DownBackend(), "tok", TZ, admin_chat_id=999)
+    assert await store.is_checker_degraded() is True
+    assert any(cid == 999 and "ulaşılamıyor" in t for cid, t in notes)
+
+    # still down -> no duplicate alert (transition-based)
+    notes.clear()
+    await checker.run_once(store, _DownBackend(), "tok", TZ, admin_chat_id=999)
+    assert [n for n in notes if n[0] == 999] == []
+
+    # recovers -> degraded cleared + recovery alert
+    notes.clear()
+    await checker.run_once(store, _FakeBackend(hit_day=travel), "tok", TZ, admin_chat_id=999)
+    assert await store.is_checker_degraded() is False
+    assert any(cid == 999 and "normale" in t for cid, t in notes)
+
+
 async def test_run_once_skips_when_seats_below_passengers(store, monkeypatch):
     sent = []
 

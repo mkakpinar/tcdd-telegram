@@ -210,3 +210,11 @@ class Store:
 
     async def heartbeat(self) -> None:
         await self.r.set("bot:last_seen", _now_iso(), ex=300)
+
+    # --- checker health ---
+
+    async def is_checker_degraded(self) -> bool:
+        return (await self.r.get("checker:degraded")) == "1"
+
+    async def set_checker_degraded(self, degraded: bool) -> None:
+        await self.r.set("checker:degraded", "1" if degraded else "0")

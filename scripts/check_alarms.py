@@ -28,7 +28,10 @@ async def main() -> None:
     tcdd = build_backend(settings.tcdd_mode)
     tz = ZoneInfo(settings.timezone)
     try:
-        await run_once(store, tcdd, settings.bot_token, tz)
+        await run_once(
+            store, tcdd, settings.bot_token, tz,
+            admin_chat_id=settings.admin_chat_id,
+        )
     finally:
         await store.aclose()
 

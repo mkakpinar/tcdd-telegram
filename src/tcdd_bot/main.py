@@ -74,6 +74,7 @@ async def _check_alarms_job(ctx: ContextTypes.DEFAULT_TYPE) -> None:
             tcdd=app.bot_data["tcdd"],
             bot_token=settings.bot_token,
             tz=app.bot_data["tz"],
+            admin_chat_id=settings.admin_chat_id,
         )
     except Exception:
         logging.exception("checker job failed")
@@ -85,6 +86,17 @@ async def _post_init(app: Application) -> None:
     app.bot_data["store"] = Store(settings.redis_url)
     app.bot_data["tcdd"] = build_backend(settings.tcdd_mode)
     app.bot_data["tz"] = ZoneInfo(settings.timezone)
+
+    # Let the admin know the bot (re)started — so a crash/restart isn't silent.
+    if settings.admin_chat_id:
+        try:
+            await app.bot.send_message(
+                settings.admin_chat_id,
+                f"✅ Bot başladı (tcdd={settings.tcdd_mode}, "
+                f"kontrol {settings.check_interval_min} dk).",
+            )
+        except Exception:
+            logging.exception("admin startup ping failed")
 
     app.bot_data["heartbeat_task"] = asyncio.create_task(_heartbeat_loop(app))
     # Schedule the alarm checker every CHECK_INTERVAL_MIN. The first run uses a
