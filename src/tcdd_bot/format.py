@@ -36,7 +36,7 @@ def render_search_results(
         return header + f"\n❌ Uygun boş koltuk yok.\n\n🔗 {link}"
     lines = [header]
     for t in matching[:10]:
-        cabins = ", ".join(f"{n} {c}" for n, c in t.cabin_breakdown.items())
+        cabins = ", ".join(f"{count} {name}" for name, count in t.cabin_breakdown.items())
         lines.append(
             f"• {t.train_no} · {t.departure_time.strftime('%H:%M')}"
             f" → {t.arrival_time.strftime('%H:%M')}"
@@ -55,7 +55,7 @@ def render_alert(alarm: Alarm, day: date, new_trains: list[TrainResult]) -> str:
         "",
     ]
     for t in new_trains[:10]:
-        cabins = ", ".join(f"{n} {c}" for n, c in t.cabin_breakdown.items())
+        cabins = ", ".join(f"{count} {name}" for name, count in t.cabin_breakdown.items())
         lines.append(
             f"• {t.train_no} · {t.departure_time.strftime('%H:%M')}"
             f" · {t.available_seats} koltuk ({cabins})"

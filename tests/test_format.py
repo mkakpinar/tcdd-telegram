@@ -28,6 +28,8 @@ def test_render_search_results_with_matches():
     assert "12345" in out
     assert "08:30" in out and "12:00" in out
     assert "sefer-listesi" in out
+    # cabin breakdown reads "<count> <name>" (Turkish-natural), not "<name> <count>"
+    assert "5 EKONOMİ" in out
 
 
 def test_render_search_results_filters_insufficient_seats():
