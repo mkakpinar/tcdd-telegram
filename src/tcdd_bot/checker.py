@@ -3,7 +3,8 @@
 
 Flow:
 1. Cleanup stale alarms (travel_date + 2 days < today).
-2. Read active alarms, expand each into (from, to, date±1) tuples, dedupe.
+2. Read active alarms, expand each into one (from, to, date) tuple per selected
+   day, dedupe.
 3. Query TCDD once per unique tuple.
 4. For each alarm, send a Telegram message about NEW trains
    (train_no not in :notified set) that have >= passengers seats.
@@ -127,20 +128,19 @@ async def run_once(
         if a and a.active:
             alarms.append(a)
 
-    # Build set of (from_id, to_id, date) tuples to query: every selected day
-    # of every alarm, expanded ±1 day, deduped.
+    # Build set of (from_id, to_id, date) tuples to query: exactly the days the
+    # user selected on each alarm, deduped. (No ±1 expansion — an alarm alerts
+    # only for its chosen days.)
     today = datetime.now(tz).date()
     queries: set[tuple[int, int, date]] = set()
     names: dict[int, str] = {}
     for a in alarms:
         names[a.from_id] = a.from_name
         names[a.to_id] = a.to_name
-        for base in a.travel_dates:
-            for delta in (-1, 0, 1):
-                d = base + timedelta(days=delta)
-                if d < today:
-                    continue
-                queries.add((a.from_id, a.to_id, d))
+        for d in a.travel_dates:
+            if d < today:
+                continue
+            queries.add((a.from_id, a.to_id, d))
 
     results: dict[tuple[int, int, date], list[TrainResult]] = {}
     failures = 0
@@ -165,14 +165,9 @@ async def run_once(
     for a in alarms:
         notified = await store.already_notified(a.id)
         per_day_hits: dict[date, list[TrainResult]] = defaultdict(list)
-        # Unique days to check across all selected dates (±1), deduped so
-        # adjacent picks don't double up.
-        days = {
-            base + timedelta(days=delta)
-            for base in a.travel_dates
-            for delta in (-1, 0, 1)
-        }
-        for d in days:
+        # Check exactly the alarm's selected days (past days simply have no query
+        # result, so they yield no hits).
+        for d in a.travel_dates:
             trains = results.get((a.from_id, a.to_id, d), [])
             for t in trains:
                 # Notified set is keyed by day so the same train number on a

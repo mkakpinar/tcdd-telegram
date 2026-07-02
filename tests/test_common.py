@@ -1,6 +1,13 @@
 from datetime import date
 
-from tcdd_bot.handlers.common import _tr_date_label, date_picker_kb
+from tcdd_bot.handlers.common import (
+    MAX_PASSENGERS,
+    STATIC_ROUTES,
+    _tr_date_label,
+    date_picker_kb,
+    passenger_picker_kb,
+    route_picker_kb,
+)
 
 
 def test_tr_date_label_uses_turkish_weekdays():
@@ -35,3 +42,26 @@ def test_date_picker_marks_selected_and_has_confirm():
     confirm = [b for b in buttons if b.callback_data == "s_d:datedone"]
     assert len(confirm) == 1
     assert "2" in confirm[0].text
+
+
+def test_passenger_picker_caps_at_four_and_is_two_per_row():
+    kb = passenger_picker_kb("a_p")
+    assert MAX_PASSENGERS == 4
+    # 2x2 grid: two rows of two (wide buttons), values 1..4 only.
+    assert [len(r) for r in kb.inline_keyboard] == [2, 2]
+    buttons = [b for row in kb.inline_keyboard for b in row]
+    assert [b.callback_data for b in buttons] == [f"a_p:pax:{n}" for n in (1, 2, 3, 4)]
+    assert all(b.text.endswith("yolcu") for b in buttons)
+
+
+def test_route_picker_offers_preset_routes():
+    kb = route_picker_kb("a")
+    rows = kb.inline_keyboard
+    # one full-width button per static route
+    assert len(rows) == len(STATIC_ROUTES)
+    assert all(len(r) == 1 for r in rows)
+    for idx, row in enumerate(rows):
+        assert row[0].callback_data == f"a_route:{idx}"
+    # both directions of the İstanbul<->Eskişehir trip are present
+    labels = " | ".join(r[0].text for r in rows)
+    assert "Eskişehir" in labels and "Söğütlüçeşme" in labels

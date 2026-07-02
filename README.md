@@ -5,7 +5,7 @@ Interactive Telegram bot for TCDD train ticket search + alarms.
 ## What it does
 
 - `/search` — Nereden / Nereye / Tarih(ler) / Yolcu sayısı seçtir, boş koltuklu trenleri listele, TCDD'ye deeplink. Birden fazla gün seçilebilir.
-- `/alarm` — aynı parametreleri al, alarm kur. Birden fazla gün seçilebilir (her gün ±1 gün esnek). Boş yer çıkınca uyarır.
+- `/alarm` — aynı parametreleri al, alarm kur. Birden fazla gün seçilebilir; yalnızca seçilen günler için kontrol edilir. Boş yer çıkınca uyarır.
 - `/alarms`, `/clear`, `/pause`, `/resume` — alarm yönetimi.
 - Tekerlekli sandalye koltukları sayımdan çıkarılır.
 - Kullanıcı başına en fazla 5 aktif alarm, saatte 10 arama.

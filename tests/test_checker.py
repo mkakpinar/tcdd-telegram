@@ -97,6 +97,28 @@ async def test_run_once_multi_date_alerts_only_matching_day(store, monkeypatch):
     assert await store.already_notified(aid) == {f"{d2.isoformat()}:81002"}
 
 
+async def test_run_once_ignores_adjacent_days(store, monkeypatch):
+    # Regression: an alarm must alert ONLY for its selected day(s) — no ±1
+    # expansion. Seats on travel+1 must not fire, and only the exact day is
+    # queried.
+    sent = []
+
+    async def fake_send(token, chat_id, text):
+        sent.append((chat_id, text))
+
+    monkeypatch.setattr(checker, "send_telegram", fake_send)
+    monkeypatch.setattr(checker.random, "uniform", lambda a, b: 0)
+
+    travel = date.today() + timedelta(days=3)
+    await store.create_alarm(42, 1, 2, "A", "B", [travel], 1)
+    backend = _FakeBackend(hit_day=travel + timedelta(days=1))  # seats a day later
+
+    await checker.run_once(store, backend, "tok", TZ)
+
+    assert sent == []            # adjacent-day availability does not alert
+    assert backend.calls == 1    # only the exact selected day was queried
+
+
 class _Resp:
     def __init__(self, status, body=None, text=""):
         self.status_code = status

@@ -18,7 +18,13 @@ from telegram.ext import (
 
 from .. import format as fmt
 from ..tcdd import TcddBackend
-from .common import date_picker_kb, passenger_picker_kb, station_picker_kb
+from .common import (
+    STATIC_ROUTES,
+    date_picker_kb,
+    passenger_picker_kb,
+    route_picker_kb,
+    station_picker_kb,
+)
 
 log = logging.getLogger(__name__)
 
@@ -30,11 +36,36 @@ def build_trip_conversation(
     prefix: str,
     finish: Callable[[Update, ContextTypes.DEFAULT_TYPE], Awaitable[int]],
 ) -> ConversationHandler:
+    async def prompt_dates(message) -> None:
+        await message.reply_text(
+            "Hangi gün(ler)? Birden fazla seçebilirsin, sonra *Onayla*'ya bas.",
+            parse_mode="Markdown",
+            reply_markup=date_picker_kb(f"{prefix}_d"),
+        )
+
     async def entry(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
         ctx.user_data.clear()
         ctx.user_data["mode"] = prefix
-        await update.message.reply_text("Nereden? (örn: Söğütlüçeşme)")
+        await update.message.reply_text(
+            "Nereden? (örn: Söğütlüçeşme)\nveya hazır bir rota seç:",
+            reply_markup=route_picker_kb(prefix),
+        )
         return ASK_FROM
+
+    async def picked_route(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+        q = update.callback_query
+        await q.answer()
+        idx = int(q.data.split(":")[-1])
+        from_id, from_name, to_id, to_name, _ = STATIC_ROUTES[idx]
+        ctx.user_data["from_id"] = from_id
+        ctx.user_data["from_name"] = from_name
+        ctx.user_data["to_id"] = to_id
+        ctx.user_data["to_name"] = to_name
+        await q.edit_message_text(
+            f"Rota: *{from_name} → {to_name}*", parse_mode="Markdown"
+        )
+        await prompt_dates(q.message)
+        return ASK_DATE
 
     async def got_from_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
         catalog = ctx.application.bot_data["stations"]
@@ -79,11 +110,7 @@ def build_trip_conversation(
         ctx.user_data["to_id"] = sid
         ctx.user_data["to_name"] = station.name
         await q.edit_message_text(f"Nereye: *{station.name}*", parse_mode="Markdown")
-        await q.message.reply_text(
-            "Hangi gün(ler)? Birden fazla seçebilirsin, sonra *Onayla*'ya bas.",
-            parse_mode="Markdown",
-            reply_markup=date_picker_kb(f"{prefix}_d"),
-        )
+        await prompt_dates(q.message)
         return ASK_DATE
 
     async def picked_date(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
@@ -132,6 +159,7 @@ def build_trip_conversation(
         entry_points=[CommandHandler(command, entry)],
         states={
             ASK_FROM: [
+                CallbackQueryHandler(picked_route, pattern=f"^{prefix}_route:"),
                 CallbackQueryHandler(picked_from, pattern=f"^{prefix}_from:station:"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, got_from_text),
             ],

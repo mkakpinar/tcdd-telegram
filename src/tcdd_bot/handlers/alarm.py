@@ -41,7 +41,7 @@ async def _finish_alarm(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     await update.callback_query.message.reply_markdown(
         f"🔔 Alarm kuruldu! `{aid}`\n"
         f"{ud['from_name']} → {ud['to_name']}\n"
-        f"{dates} (±1 gün) · {ud['pax']} yolcu\n\n"
+        f"{dates} · {ud['pax']} yolcu\n\n"
         "Yer çıkınca haber vereceğim. /alarms ile yönet."
     )
     return ConversationHandler.END

@@ -51,11 +51,40 @@ def date_picker_kb(
     return InlineKeyboardMarkup(rows)
 
 
+MAX_PASSENGERS = 4
+
+
 def passenger_picker_kb(prefix: str) -> InlineKeyboardMarkup:
+    # 2 per row so each button is ~half-width (wide + easy to tap) rather than a
+    # cramped single row. TCDD alarms cap at MAX_PASSENGERS passengers.
+    nums = list(range(1, MAX_PASSENGERS + 1))
     rows = [
         [
-            InlineKeyboardButton(str(n), callback_data=f"{prefix}:pax:{n}")
-            for n in (1, 2, 3, 4, 5, 6)
+            InlineKeyboardButton(f"{n} yolcu", callback_data=f"{prefix}:pax:{n}")
+            for n in nums[i:i + 2]
         ]
+        for i in range(0, len(nums), 2)
+    ]
+    return InlineKeyboardMarkup(rows)
+
+
+# Common İstanbul <-> Eskişehir trips offered as one-tap shortcuts on "Nereden?".
+# from_name/to_name are the exact TCDD catalog strings (search() sends them to the
+# API as departureStationName/arrivalStationName); `label` is the friendly button
+# text. (from_id, from_name, to_id, to_name, label)
+STATIC_ROUTES: list[tuple[int, str, int, str, str]] = [
+    (93, "ESKİŞEHİR", 1325, "İSTANBUL(SÖĞÜTLÜÇEŞME)",
+     "Eskişehir → İstanbul (Söğütlüçeşme)"),
+    (1325, "İSTANBUL(SÖĞÜTLÜÇEŞME)", 93, "ESKİŞEHİR",
+     "İstanbul (Söğütlüçeşme) → Eskişehir"),
+]
+
+
+def route_picker_kb(prefix: str) -> InlineKeyboardMarkup:
+    """One full-width button per preset route; callback carries the STATIC_ROUTES
+    index (`{prefix}_route:{idx}`)."""
+    rows = [
+        [InlineKeyboardButton(f"🚄 {label}", callback_data=f"{prefix}_route:{idx}")]
+        for idx, (_, _, _, _, label) in enumerate(STATIC_ROUTES)
     ]
     return InlineKeyboardMarkup(rows)
