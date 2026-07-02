@@ -64,6 +64,7 @@ class TcddBackend(Protocol):
         passengers: int,
         from_name: str = "",
         to_name: str = "",
+        include_unavailable: bool = False,
     ) -> list[TrainResult]: ...
 
 
@@ -78,6 +79,7 @@ class StubBackend:
         passengers: int,
         from_name: str = "",
         to_name: str = "",
+        include_unavailable: bool = False,
     ) -> list[TrainResult]:
         await asyncio.sleep(0.2)
         rng = random.Random(f"{from_id}-{to_id}-{day.isoformat()}")
@@ -126,6 +128,7 @@ class LiveBackend:
         passengers: int,
         from_name: str = "",
         to_name: str = "",
+        include_unavailable: bool = False,
     ) -> list[TrainResult]:
         # TCDD wants DD-MM-YYYY HH:MM:SS — keep the time at 00:00:00, the
         # response returns trains for the whole day.
@@ -168,7 +171,7 @@ class LiveBackend:
                 )
             else:
                 if r.status_code < 400:
-                    return _parse_response(r.json())
+                    return _parse_response(r.json(), include_unavailable)
                 if r.status_code < 500 and r.status_code != 429:
                     log.warning("TCDD search %s -> %s", r.status_code, r.text[:200])
                     raise RuntimeError(f"TCDD HTTP {r.status_code}")
@@ -182,8 +185,14 @@ class LiveBackend:
         raise last_exc or RuntimeError("TCDD search failed")
 
 
-def _parse_response(data: dict) -> list[TrainResult]:
-    """Map raw response into TrainResult list. Wheelchair cabin excluded."""
+def _parse_response(data: dict, include_unavailable: bool = False) -> list[TrainResult]:
+    """Map raw response into TrainResult list. Wheelchair cabin excluded.
+
+    By default only trains with available seats are returned. Pass
+    include_unavailable=True to also return sold-out trains (available_seats=0,
+    empty cabin_breakdown) — used by the alarm's train picker, where the user
+    wants to watch a currently-full train.
+    """
     out: list[TrainResult] = []
     for leg in data.get("trainLegs") or []:
         for av in leg.get("trainAvailabilities") or []:
@@ -201,7 +210,7 @@ def _parse_response(data: dict) -> list[TrainResult]:
                         if count <= 0:
                             continue
                         cabins[name] = cabins.get(name, 0) + count
-                if not cabins:
+                if not cabins and not include_unavailable:
                     continue
                 segments = train.get("segments") or []
                 if not segments:

@@ -15,6 +15,20 @@ async def test_create_alarm_with_multiple_dates(store):
     assert a.travel_dates == [d1, d2]  # stored sorted
 
 
+async def test_create_alarm_with_target_trains_round_trips(store):
+    d = date.today() + timedelta(days=3)
+    aid = await store.create_alarm(42, 1, 2, "A", "B", [d], 1, target_trains=["12002", "12004"])
+    a = await store.get_alarm(aid)
+    assert a.target_trains == {"12002", "12004"}
+
+
+async def test_alarm_without_target_trains_is_any_train(store):
+    d = date.today() + timedelta(days=3)
+    aid = await store.create_alarm(42, 1, 2, "A", "B", [d], 1)  # no target_trains
+    a = await store.get_alarm(aid)
+    assert a.target_trains == set()  # empty = any train
+
+
 async def test_get_alarm_backward_compat_single_date(store):
     # An alarm written under the old schema (single travel_date field).
     old = date.today() + timedelta(days=3)

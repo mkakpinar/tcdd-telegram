@@ -97,6 +97,48 @@ async def test_run_once_multi_date_alerts_only_matching_day(store, monkeypatch):
     assert await store.already_notified(aid) == {f"{d2.isoformat()}:81002"}
 
 
+class _TwoTrainBackend:
+    """Returns a target and a non-target train, both with seats, on hit_day."""
+
+    def __init__(self, hit_day: date):
+        self.hit_day = hit_day
+
+    async def search(self, from_id, to_id, day, passengers, from_name="", to_name="",
+                     include_unavailable=False):
+        if day != self.hit_day:
+            return []
+
+        def mk(no):
+            return TrainResult(
+                train_no=no,
+                departure_time=datetime.combine(day, datetime.min.time()).replace(hour=8),
+                arrival_time=datetime.combine(day, datetime.min.time()).replace(hour=12),
+                available_seats=4,
+                cabin_breakdown={"EKONOMİ": 4},
+            )
+
+        return [mk("12002"), mk("81002")]
+
+
+async def test_run_once_targeted_alarm_alerts_only_target_train(store, monkeypatch):
+    sent = []
+
+    async def fake_send(token, chat_id, text):
+        sent.append((chat_id, text))
+
+    monkeypatch.setattr(checker, "send_telegram", fake_send)
+    monkeypatch.setattr(checker.random, "uniform", lambda a, b: 0)
+
+    travel = date.today() + timedelta(days=3)
+    aid = await store.create_alarm(42, 1, 2, "A", "B", [travel], 1, target_trains=["12002"])
+
+    await checker.run_once(store, _TwoTrainBackend(hit_day=travel), "tok", TZ)
+
+    assert len(sent) == 1
+    assert "12002" in sent[0][1] and "81002" not in sent[0][1]
+    assert await store.already_notified(aid) == {f"{travel.isoformat()}:12002"}
+
+
 async def test_run_once_ignores_adjacent_days(store, monkeypatch):
     # Regression: an alarm must alert ONLY for its selected day(s) — no ±1
     # expansion. Seats on travel+1 must not fire, and only the exact day is

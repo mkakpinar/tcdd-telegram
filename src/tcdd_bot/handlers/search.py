@@ -24,23 +24,31 @@ from .common import (
     passenger_picker_kb,
     route_picker_kb,
     station_picker_kb,
+    train_picker_kb,
+    trainmode_kb,
 )
 
 log = logging.getLogger(__name__)
 
-ASK_FROM, ASK_TO, ASK_DATE, ASK_PAX = range(4)
+ASK_FROM, ASK_TO, ASK_DATE, ASK_TRAINMODE, ASK_TRAIN, ASK_PAX = range(6)
 
 
 def build_trip_conversation(
     command: str,
     prefix: str,
     finish: Callable[[Update, ContextTypes.DEFAULT_TYPE], Awaitable[int]],
+    pick_train: bool = False,
 ) -> ConversationHandler:
     async def prompt_dates(message) -> None:
         await message.reply_text(
             "Hangi gün(ler)? Birden fazla seçebilirsin, sonra *Onayla*'ya bas.",
             parse_mode="Markdown",
             reply_markup=date_picker_kb(f"{prefix}_d"),
+        )
+
+    async def prompt_pax(message) -> None:
+        await message.reply_text(
+            "Kaç yolcu?", reply_markup=passenger_picker_kb(f"{prefix}_p")
         )
 
     async def entry(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
@@ -136,9 +144,81 @@ def build_trip_conversation(
         await q.answer()
         label = ", ".join(d.strftime("%d.%m.%Y") for d in dates)
         await q.edit_message_text(f"Tarih(ler): *{label}*", parse_mode="Markdown")
-        await q.message.reply_text(
-            "Kaç yolcu?", reply_markup=passenger_picker_kb(f"{prefix}_p")
+        if pick_train:
+            await q.message.reply_text(
+                "Tüm trenler mi, belirli tren(ler) mi?",
+                reply_markup=trainmode_kb(prefix),
+            )
+            return ASK_TRAINMODE
+        await prompt_pax(q.message)
+        return ASK_PAX
+
+    def _train_label(t) -> str:
+        seats = f"{t.available_seats} koltuk" if t.available_seats else "dolu"
+        return f"{t.train_no} · {t.departure_time.strftime('%H:%M')} · {seats}"
+
+    async def chose_trainmode(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+        q = update.callback_query
+        await q.answer()
+        choice = q.data.split(":")[-1]
+        ctx.user_data["target_trains"] = set()
+        if choice == "all":
+            await q.edit_message_text("Tüm trenler izlenecek.")
+            await prompt_pax(q.message)
+            return ASK_PAX
+        # "pick": fetch the first selected day's full schedule (incl. sold-out).
+        tcdd: TcddBackend = ctx.application.bot_data["tcdd"]
+        ud = ctx.user_data
+        day = ud["dates"][0]
+        try:
+            trains = await tcdd.search(
+                ud["from_id"], ud["to_id"], day, 1,
+                from_name=ud["from_name"], to_name=ud["to_name"],
+                include_unavailable=True,
+            )
+        except Exception:
+            log.exception("train picker fetch failed for %s", day)
+            trains = []
+        if not trains:
+            await q.edit_message_text(
+                "O gün için tren listesi alınamadı — tüm trenler izlenecek."
+            )
+            await prompt_pax(q.message)
+            return ASK_PAX
+        # Stash options for re-rendering on each toggle.
+        ud["train_options"] = [(t.train_no, _train_label(t)) for t in trains]
+        await q.edit_message_text(
+            f"*{day.strftime('%d.%m.%Y')}* trenleri — izlemek istediklerini seç,"
+            " sonra *Onayla*. (Seçilen tren no'ları tüm seçili günlerde izlenir.)",
+            parse_mode="Markdown",
+            reply_markup=train_picker_kb(prefix, ud["train_options"]),
         )
+        return ASK_TRAIN
+
+    async def picked_train(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+        q = update.callback_query
+        train_no = q.data.split(":")[-1]
+        selected: set[str] = ctx.user_data.setdefault("target_trains", set())
+        selected.discard(train_no) if train_no in selected else selected.add(train_no)
+        await q.answer()
+        await q.edit_message_reply_markup(
+            reply_markup=train_picker_kb(
+                prefix, ctx.user_data["train_options"], selected
+            )
+        )
+        return ASK_TRAIN
+
+    async def trains_done(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+        q = update.callback_query
+        selected: set[str] = ctx.user_data.get("target_trains") or set()
+        if not selected:
+            await q.answer("En az bir tren seç.", show_alert=True)
+            return ASK_TRAIN
+        await q.answer()
+        await q.edit_message_text(
+            f"🎯 Tren: *{', '.join(sorted(selected))}*", parse_mode="Markdown"
+        )
+        await prompt_pax(q.message)
         return ASK_PAX
 
     async def picked_pax(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
@@ -155,26 +235,36 @@ def build_trip_conversation(
         await update.message.reply_text("İptal edildi.")
         return ConversationHandler.END
 
+    states = {
+        ASK_FROM: [
+            CallbackQueryHandler(picked_route, pattern=f"^{prefix}_route:"),
+            CallbackQueryHandler(picked_from, pattern=f"^{prefix}_from:station:"),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, got_from_text),
+        ],
+        ASK_TO: [
+            CallbackQueryHandler(picked_to, pattern=f"^{prefix}_to:station:"),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, got_to_text),
+        ],
+        ASK_DATE: [
+            CallbackQueryHandler(dates_done, pattern=f"^{prefix}_d:datedone$"),
+            CallbackQueryHandler(picked_date, pattern=f"^{prefix}_d:date:"),
+        ],
+        ASK_PAX: [
+            CallbackQueryHandler(picked_pax, pattern=f"^{prefix}_p:pax:"),
+        ],
+    }
+    if pick_train:
+        states[ASK_TRAINMODE] = [
+            CallbackQueryHandler(chose_trainmode, pattern=f"^{prefix}_tm:"),
+        ]
+        states[ASK_TRAIN] = [
+            CallbackQueryHandler(trains_done, pattern=f"^{prefix}_t:traindone$"),
+            CallbackQueryHandler(picked_train, pattern=f"^{prefix}_t:train:"),
+        ]
+
     return ConversationHandler(
         entry_points=[CommandHandler(command, entry)],
-        states={
-            ASK_FROM: [
-                CallbackQueryHandler(picked_route, pattern=f"^{prefix}_route:"),
-                CallbackQueryHandler(picked_from, pattern=f"^{prefix}_from:station:"),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, got_from_text),
-            ],
-            ASK_TO: [
-                CallbackQueryHandler(picked_to, pattern=f"^{prefix}_to:station:"),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, got_to_text),
-            ],
-            ASK_DATE: [
-                CallbackQueryHandler(dates_done, pattern=f"^{prefix}_d:datedone$"),
-                CallbackQueryHandler(picked_date, pattern=f"^{prefix}_d:date:"),
-            ],
-            ASK_PAX: [
-                CallbackQueryHandler(picked_pax, pattern=f"^{prefix}_p:pax:"),
-            ],
-        },
+        states=states,
         fallbacks=[CommandHandler("cancel", cancel)],
     )
 

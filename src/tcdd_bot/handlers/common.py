@@ -88,3 +88,33 @@ def route_picker_kb(prefix: str) -> InlineKeyboardMarkup:
         for idx, (_, _, _, _, label) in enumerate(STATIC_ROUTES)
     ]
     return InlineKeyboardMarkup(rows)
+
+
+def trainmode_kb(prefix: str) -> InlineKeyboardMarkup:
+    """Ask whether the alarm watches all trains or specific ones."""
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("🔔 Tüm trenler", callback_data=f"{prefix}_tm:all")],
+            [InlineKeyboardButton("🎯 Belirli tren seç", callback_data=f"{prefix}_tm:pick")],
+        ]
+    )
+
+
+def train_picker_kb(
+    prefix: str, options: "list[tuple[str, str]]", selected: "set[str] | None" = None
+) -> InlineKeyboardMarkup:
+    """Multi-select train picker. `options` is [(train_no, label)]; `selected` is the
+    set of chosen train numbers (shown with ✅). A trailing 'Onayla' confirms."""
+    chosen = set(selected or ())
+    rows = [
+        [
+            InlineKeyboardButton(
+                ("✅ " if train_no in chosen else "") + label,
+                callback_data=f"{prefix}_t:train:{train_no}",
+            )
+        ]
+        for train_no, label in options
+    ]
+    confirm = f"✅ Onayla ({len(chosen)})" if chosen else "Onayla"
+    rows.append([InlineKeyboardButton(confirm, callback_data=f"{prefix}_t:traindone")])
+    return InlineKeyboardMarkup(rows)

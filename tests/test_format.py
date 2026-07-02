@@ -74,6 +74,28 @@ def test_render_alarm_list_shows_multiple_dates():
     assert "05.07" in out and "07.07" in out
 
 
+def test_render_alarm_list_shows_target_trains():
+    a = Alarm(
+        id="abc123", chat_id=1, from_id=10, to_id=20, from_name="A", to_name="B",
+        travel_dates=[date(2026, 7, 5)], passengers=2, active=True,
+        created_at=datetime(2026, 6, 1), last_alerted_at=None,
+        target_trains={"12002", "12004"},
+    )
+    out = fmt.render_alarm_list([a])
+    assert "🎯" in out and "12002" in out and "12004" in out
+
+
+def test_render_alert_marks_targeted_alarm():
+    a = Alarm(
+        id="abc123", chat_id=1, from_id=10, to_id=20, from_name="A", to_name="B",
+        travel_dates=[date(2026, 7, 5)], passengers=2, active=True,
+        created_at=datetime(2026, 6, 1), last_alerted_at=None,
+        target_trains={"12002"},
+    )
+    out = fmt.render_alert(a, date(2026, 7, 5), [_train()])
+    assert "🎯" in out
+
+
 def test_alarm_button_label_compact_with_extra_count():
     one = fmt.alarm_button_label(_alarm([date(2026, 7, 5)]))
     assert "05.07" in one and "+" not in one

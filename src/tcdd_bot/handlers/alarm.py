@@ -28,6 +28,7 @@ async def _finish_alarm(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
             " Önce birini sil (/alarms)."
         )
         return ConversationHandler.END
+    target_trains = sorted(ud.get("target_trains") or [])
     aid = await store.create_alarm(
         chat_id=chat_id,
         from_id=ud["from_id"],
@@ -36,12 +37,14 @@ async def _finish_alarm(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
         to_name=ud["to_name"],
         travel_dates=ud["dates"],
         passengers=ud["pax"],
+        target_trains=target_trains,
     )
     dates = ", ".join(d.strftime("%d.%m.%Y") for d in ud["dates"])
+    train_line = f"\n🎯 Tren: {', '.join(target_trains)}" if target_trains else ""
     await update.callback_query.message.reply_markdown(
         f"🔔 Alarm kuruldu! `{aid}`\n"
         f"{ud['from_name']} → {ud['to_name']}\n"
-        f"{dates} · {ud['pax']} yolcu\n\n"
+        f"{dates} · {ud['pax']} yolcu{train_line}\n\n"
         "Yer çıkınca haber vereceğim. /alarms ile yönet."
     )
     return ConversationHandler.END
@@ -96,7 +99,7 @@ async def resume(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 def register(app) -> None:
-    app.add_handler(build_trip_conversation("alarm", "a", _finish_alarm))
+    app.add_handler(build_trip_conversation("alarm", "a", _finish_alarm, pick_train=True))
     app.add_handler(CommandHandler("alarms", list_alarms))
     app.add_handler(CommandHandler("clear", clear_alarms))
     app.add_handler(CommandHandler("pause", pause))

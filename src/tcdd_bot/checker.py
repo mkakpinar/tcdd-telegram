@@ -173,7 +173,12 @@ async def run_once(
                 # Notified set is keyed by day so the same train number on a
                 # different day still alerts.
                 key = f"{d.isoformat()}:{t.train_no}"
-                if t.available_seats >= a.passengers and key not in notified:
+                if (
+                    t.available_seats >= a.passengers
+                    # Empty target_trains = any train; otherwise only the picked ones.
+                    and (not a.target_trains or t.train_no in a.target_trains)
+                    and key not in notified
+                ):
                     per_day_hits[d].append(t)
         new_keys: list[str] = []
         for d, hits in sorted(per_day_hits.items()):

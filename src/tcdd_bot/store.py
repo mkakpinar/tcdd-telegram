@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 
 import redis.asyncio as redis
@@ -38,6 +38,9 @@ class Alarm:
     active: bool
     created_at: datetime
     last_alerted_at: datetime | None
+    # Train numbers to watch. Empty = alert on ANY train (the default). When set,
+    # only these train numbers alert, on whichever selected days they run.
+    target_trains: set[str] = field(default_factory=set)
 
 
 def _now_iso() -> str:
@@ -104,6 +107,7 @@ class Store:
         to_name: str,
         travel_dates: list[date],
         passengers: int,
+        target_trains: list[str] | None = None,
     ) -> str:
         aid = uuid.uuid4().hex[:12]
         await self.r.hset(
@@ -116,6 +120,8 @@ class Store:
                 "to_name": to_name,
                 "travel_dates": ",".join(d.isoformat() for d in sorted(travel_dates)),
                 "passengers": str(passengers),
+                # Empty string = any train (the default).
+                "target_trains": ",".join(target_trains or []),
                 "active": "1",
                 "created_at": _now_iso(),
                 "last_alerted_at": "",
@@ -160,6 +166,8 @@ class Store:
                 active=h.get("active") == "1",
                 created_at=_parse_iso(h.get("created_at")) or datetime.min,
                 last_alerted_at=_parse_iso(h.get("last_alerted_at")),
+                # Absent (old alarms) or empty -> any train.
+                target_trains={t for t in (h.get("target_trains") or "").split(",") if t},
             )
         except (KeyError, ValueError):
             return None

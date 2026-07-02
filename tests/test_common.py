@@ -7,6 +7,8 @@ from tcdd_bot.handlers.common import (
     date_picker_kb,
     passenger_picker_kb,
     route_picker_kb,
+    train_picker_kb,
+    trainmode_kb,
 )
 
 
@@ -65,3 +67,21 @@ def test_route_picker_offers_preset_routes():
     # both directions of the İstanbul<->Eskişehir trip are present
     labels = " | ".join(r[0].text for r in rows)
     assert "Eskişehir" in labels and "Söğütlüçeşme" in labels
+
+
+def test_trainmode_kb_has_all_and_pick():
+    kb = trainmode_kb("a")
+    data = [b.callback_data for row in kb.inline_keyboard for b in row]
+    assert data == ["a_tm:all", "a_tm:pick"]
+
+
+def test_train_picker_marks_selected_and_has_confirm():
+    options = [("12002", "12002 · 22:47 · dolu"), ("81002", "81002 · 08:00 · 5 koltuk")]
+    kb = train_picker_kb("a", options, {"12002"})
+    buttons = [b for row in kb.inline_keyboard for b in row]
+    train_btns = [b for b in buttons if ":train:" in b.callback_data]
+    assert [b.callback_data for b in train_btns] == ["a_t:train:12002", "a_t:train:81002"]
+    checked = [b for b in train_btns if b.text.startswith("✅")]
+    assert len(checked) == 1 and "12002" in checked[0].text
+    confirm = [b for b in buttons if b.callback_data == "a_t:traindone"]
+    assert len(confirm) == 1 and "1" in confirm[0].text
