@@ -2,6 +2,13 @@
 
 Interactive Telegram bot for TCDD train ticket search + alarms.
 
+> **Disclaimer.** Personal, educational project — **not affiliated with, endorsed by, or
+> connected to TCDD**. It reads TCDD's public web API to monitor seat availability for
+> personal use; you are responsible for complying with TCDD's terms of service and
+> applicable law. The bundled API token is the same public token TCDD's own website ships
+> in its frontend and may stop working at any time. Provided "as is", without warranty —
+> use at your own risk. Licensed under the [MIT License](LICENSE).
+
 ## What it does
 
 - `/search` — Nereden / Nereye / Tarih(ler) / Yolcu sayısı seçtir, boş koltuklu trenleri listele, TCDD'ye deeplink. Birden fazla gün seçilebilir.
