@@ -17,6 +17,9 @@ class Settings:
     search_rate_per_hour: int
     check_interval_min: int  # how often the alarm checker runs
     tcdd_mode: str  # "stub" or "live"
+    # Fly deploy token so /stop can stop this machine via the Machines API.
+    # Unset (e.g. local dev) => /stop replies "not configured" instead of stopping.
+    fly_api_token: str | None = None
 
 
 def _parse_chat_ids(raw: str | None) -> frozenset[int]:
@@ -38,4 +41,5 @@ def load_settings() -> Settings:
         search_rate_per_hour=int(os.getenv("SEARCH_RATE_PER_HOUR", "10")),
         check_interval_min=int(os.getenv("CHECK_INTERVAL_MIN", "10")),
         tcdd_mode=os.getenv("TCDD_MODE", "live"),
+        fly_api_token=os.getenv("FLY_API_TOKEN") or None,
     )
