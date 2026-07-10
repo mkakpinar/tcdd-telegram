@@ -9,6 +9,7 @@ HELP_TEXT = (
     "/clear — Tüm alarmlarını sil\n"
     "/pause — Tüm alarmlarını duraklat\n"
     "/resume — Alarmlarını yeniden başlat\n"
+    "/status — Bot ve makine durumu\n"
     "/help — Bu mesaj\n"
 )
 

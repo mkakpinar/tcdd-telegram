@@ -219,6 +219,9 @@ class Store:
     async def heartbeat(self) -> None:
         await self.r.set("bot:last_seen", _now_iso(), ex=300)
 
+    async def last_seen(self) -> datetime | None:
+        return _parse_iso(await self.r.get("bot:last_seen"))
+
     # --- checker health ---
 
     async def is_checker_degraded(self) -> bool:

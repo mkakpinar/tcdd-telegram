@@ -19,7 +19,7 @@ from telegram.ext import (
 
 from .checker import run_once as checker_run_once
 from .config import Settings, load_settings
-from .handlers import alarm, search, start
+from .handlers import alarm, ops, search, start
 from .stations import StationCatalog
 from .store import Store
 from .tcdd import build_backend
@@ -167,6 +167,7 @@ def main() -> None:
     start.register(app)
     search.register(app)
     alarm.register(app)
+    ops.register(app)
     app.run_polling(allowed_updates=["message", "callback_query"])
 
 
