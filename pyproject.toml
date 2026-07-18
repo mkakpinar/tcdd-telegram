@@ -3,7 +3,7 @@ name = "tcdd-telegram"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
-    "python-telegram-bot[rate-limiter,job-queue]>=21.6",
+    "python-telegram-bot[rate-limiter,job-queue]>=22.8",
     "httpx>=0.27",
     "redis[hiredis]>=5.0",
     "rapidfuzz>=3.9",
