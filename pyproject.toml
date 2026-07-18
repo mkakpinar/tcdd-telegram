@@ -18,7 +18,7 @@ dev = [
     "pytest-cov>=5.0",
     "fakeredis>=2.20",
     "ruff>=0.6",
-    "bandit>=1.8",
+    "bandit>=1.9.4",
     "pip-audit>=2.7",
 ]
 
