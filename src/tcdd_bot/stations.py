@@ -15,7 +15,7 @@ import unicodedata
 from dataclasses import dataclass
 
 import httpx
-from rapidfuzz import fuzz, process
+from rapidfuzz import fuzz
 
 log = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ class StationCatalog:
         self._norm_names = {_normalize(s.name): s for s in stations}
 
     @classmethod
-    async def load(cls) -> "StationCatalog":
+    async def load(cls) -> StationCatalog:
         async with httpx.AsyncClient(timeout=30.0) as client:
             r = await client.get(STATIONS_URL)
             r.raise_for_status()

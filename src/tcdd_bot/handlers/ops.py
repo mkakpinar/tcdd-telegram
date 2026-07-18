@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 from telegram import Update
@@ -51,7 +51,7 @@ async def status_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     degraded = await store.is_checker_degraded()
     seen = await store.last_seen()
     if seen is not None:
-        secs = int((datetime.now(timezone.utc) - seen).total_seconds())
+        secs = int((datetime.now(UTC) - seen).total_seconds())
         seen_txt = f"{secs} sn önce" if secs < 90 else f"{secs // 60} dk önce"
     else:
         seen_txt = "bilinmiyor"

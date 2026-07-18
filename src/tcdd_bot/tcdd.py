@@ -15,11 +15,11 @@ import asyncio
 import logging
 import random
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
+from typing import Protocol
 from zoneinfo import ZoneInfo
 
 ISTANBUL_TZ = ZoneInfo("Europe/Istanbul")
-from typing import Protocol
 
 log = logging.getLogger(__name__)
 
@@ -235,7 +235,7 @@ def _epoch_ms_to_dt(ms: int | None) -> datetime:
         return datetime.min
     # TCDD returns true UTC epoch ms; render in Europe/Istanbul wall-clock.
     return (
-        datetime.fromtimestamp(ms / 1000, tz=timezone.utc)
+        datetime.fromtimestamp(ms / 1000, tz=UTC)
         .astimezone(ISTANBUL_TZ)
         .replace(tzinfo=None)
     )

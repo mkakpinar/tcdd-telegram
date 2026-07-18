@@ -1,8 +1,6 @@
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-import pytest
-
 from tcdd_bot import checker
 from tcdd_bot.tcdd import TrainResult
 

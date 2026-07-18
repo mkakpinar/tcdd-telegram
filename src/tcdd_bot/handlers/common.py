@@ -26,7 +26,7 @@ def station_picker_kb(stations: list[Station], prefix: str) -> InlineKeyboardMar
 
 
 def date_picker_kb(
-    prefix: str, selected: "set[str] | None" = None, days: int = 14
+    prefix: str, selected: set[str] | None = None, days: int = 14
 ) -> InlineKeyboardMarkup:
     """Multi-select day picker. `selected` is the set of already-chosen ISO
     dates (shown with a ✅). A trailing 'Onayla' button confirms the choice."""
@@ -101,7 +101,7 @@ def trainmode_kb(prefix: str) -> InlineKeyboardMarkup:
 
 
 def train_picker_kb(
-    prefix: str, options: "list[tuple[str, str]]", selected: "set[str] | None" = None
+    prefix: str, options: list[tuple[str, str]], selected: set[str] | None = None
 ) -> InlineKeyboardMarkup:
     """Multi-select train picker. `options` is [(train_no, label)]; `selected` is the
     set of chosen train numbers (shown with ✅). A trailing 'Onayla' confirms."""

@@ -1,9 +1,8 @@
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from zoneinfo import ZoneInfo
 
 import pytest
 
-from tcdd_bot import tcdd
 from tcdd_bot.tcdd import (
     MAX_SEARCH_ATTEMPTS,
     LiveBackend,
@@ -108,7 +107,7 @@ def test_parse_empty_payload():
 def test_epoch_conversion_is_naive_istanbul():
     ms = 1700000000000
     expected = (
-        datetime.fromtimestamp(ms / 1000, tz=timezone.utc)
+        datetime.fromtimestamp(ms / 1000, tz=UTC)
         .astimezone(ZoneInfo("Europe/Istanbul"))
         .replace(tzinfo=None)
     )

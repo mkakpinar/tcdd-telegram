@@ -15,7 +15,11 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
     "fakeredis>=2.20",
+    "ruff>=0.6",
+    "bandit>=1.8",
+    "pip-audit>=2.7",
 ]
 
 [build-system]
@@ -28,3 +32,20 @@ where = ["src"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501"]  # line length is the formatter's concern, not a lint gate
+
+[tool.coverage.run]
+source = ["src"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+# Ratchet just below the current ~67% so testable logic can't silently regress.
+fail_under = 60
