@@ -5,7 +5,7 @@ requires-python = ">=3.12"
 dependencies = [
     "python-telegram-bot[rate-limiter,job-queue]>=22.8",
     "httpx>=0.28.1",
-    "redis[hiredis]>=5.0",
+    "redis[hiredis]>=8.0.1",
     "rapidfuzz>=3.14.5",
     "python-dotenv>=1.2.2",
     "curl_cffi>=0.15.0",
