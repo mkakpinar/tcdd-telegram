@@ -36,6 +36,8 @@ jobs:
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       FLY_APP: tcdd-telegram
+      TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
     steps:
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
@@ -50,3 +52,18 @@ jobs:
       - name: Stop (scale to zero overnight)
         if: github.event.schedule == '0 21,22 * * *' || github.event.inputs.action == 'stop'
         run: flyctl machine stop "${{ steps.mid.outputs.id }}" -a "$FLY_APP"
+
+      # This workflow decides whether the bot is running at all, and it runs
+      # unattended 20 times a day. A failed start means no alarm checks until
+      # someone happens to look — an Actions email is not a signal anyone acts on.
+      - name: Alert on failure
+        if: failure()
+        run: |
+          if [ -z "$TG_TOKEN" ] || [ -z "$TG_CHAT" ]; then
+            echo "::warning::Run failed and TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID are not set — no alert could be sent."
+            exit 0
+          fi
+          curl -sS --max-time 20 -X POST \
+            "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TG_CHAT}" \
+            --data-urlencode "text=🔴 tcdd active window failed — the machine may be stopped during the active window (no alarm checks). Logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
