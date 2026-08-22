@@ -18,6 +18,14 @@ services:
       # Shown by /status so it is obvious which stack answered.
       HOST_LABEL: ${COMPOSE_PROJECT_NAME:-tcdd}
       TZ: Europe/Istanbul
+    # The host's resolver (and Google's) intermittently fails to resolve
+    # cdn-api-prod-ytp.tcddtasimacilik.gov.tr, which the station catalog is
+    # fetched from at startup — and a failed catalog load kills the process.
+    # Cloudflare answers for it reliably. Set here rather than on the host: the
+    # box is shared, and its resolver belongs to the other services on it.
+    dns:
+      - 1.1.1.1
+      - 1.0.0.1
     # 1 vCPU / 1 GB box shared with other services: cap the bot so a runaway
     # allocation can't push the host into OOM and take a neighbour down.
     mem_limit: 320m
