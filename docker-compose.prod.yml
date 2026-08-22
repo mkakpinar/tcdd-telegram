@@ -1,0 +1,4 @@
+# Prod overlay: real bot token, live TCDD backend. Applied by `make up`.
+services:
+  bot:
+    env_file: .env

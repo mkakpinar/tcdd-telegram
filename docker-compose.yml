@@ -1,0 +1,55 @@
+# Production stack. Run it with `make up` (see Makefile) — that wires in
+# docker-compose.prod.yml, which supplies the .env file.
+#
+# Deliberately publishes NO ports. The bot is outbound-only (Telegram
+# long-polling + TCDD), and Redis is reachable only from the bot over this
+# stack's private network. Nothing here touches the host firewall, so it is
+# safe to run alongside other services on a shared box.
+
+services:
+  bot:
+    build: .
+    image: tcdd-bot:local
+    restart: always
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      # Shown by /status so it is obvious which stack answered.
+      HOST_LABEL: ${COMPOSE_PROJECT_NAME:-tcdd}
+      TZ: Europe/Istanbul
+    # 1 vCPU / 1 GB box shared with other services: cap the bot so a runaway
+    # allocation can't push the host into OOM and take a neighbour down.
+    mem_limit: 320m
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  redis:
+    image: redis:8-alpine
+    restart: always
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    volumes:
+      - ./deploy/redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    mem_limit: 96m
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  redis_data:
+
+networks:
+  default:
+    ipam:
+      config:
+        # Pinned so the stack can never drift into a subnet the host already
+        # uses (OpenVPN 10.8.0.0/24, DO VPC 10.114.0.0/20, 10.19.0.0/16).
+        - subnet: 172.28.0.0/24

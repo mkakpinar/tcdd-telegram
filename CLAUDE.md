@@ -21,8 +21,9 @@ Default to caveman. Short. No filler.
 An interactive Telegram bot for **TCDD** (Turkish State Railways) train-ticket
 search and seat-availability **alarms** (Python 3.12, asyncio,
 `python-telegram-bot`). Users run `/search` to list trains with free seats or
-`/alarm` to be notified when seats open up. Runs as a long-polling bot on
-Fly.io; state lives in Fly-managed Upstash Redis.
+`/alarm` to be notified when seats open up. Runs as a long-polling bot in a
+Docker container on a DigitalOcean droplet; state lives in a Redis container
+next to it.
 
 > Personal/educational project — **not affiliated with TCDD**. It reads TCDD's
 > public web API. See the README disclaimer.
@@ -35,8 +36,8 @@ Fly.io; state lives in Fly-managed Upstash Redis.
   **in-process** via PTB's `JobQueue` every `CHECK_INTERVAL_MIN` minutes (with a
   random startup jitter). The same logic is callable one-off via
   [scripts/check_alarms.py](scripts/check_alarms.py).
-- **State** — Upstash Redis ([store.py](src/tcdd_bot/store.py)): users, alarms,
-  and per-user rate limits. There is **no database and no unbounded in-memory
+- **State** — Redis ([store.py](src/tcdd_bot/store.py)): users, alarms, and
+  per-user rate limits. There is **no database and no unbounded in-memory
   state** — everything durable is in Redis, and the process is otherwise stateless.
 - **TCDD client** — [src/tcdd_bot/tcdd.py](src/tcdd_bot/tcdd.py). Two backends
   behind one `Protocol`: `LiveBackend` (real API via `curl_cffi` with Chrome ja3
@@ -51,25 +52,29 @@ src/tcdd_bot/
   config.py      env loading (all tunables)
   tcdd.py        TCDD search client (Stub/Live backends, baked bearer token)
   stations.py    station catalog (CDN) + rapidfuzz match
-  store.py       Upstash Redis store (users / alarms / rate limits)
+  store.py       Redis store (users / alarms / rate limits)
   format.py      Telegram message rendering
   checker.py     periodic alarm checker (in-process via JobQueue)
   handlers/      start, search, alarm, ops, common
 scripts/check_alarms.py   ad-hoc one-shot checker
-Dockerfile / fly.toml     Fly.io image + app config
+Dockerfile                bot image
+docker-compose.yml        bot + redis stack; .prod / .test overlays
+deploy/redis.conf         Redis persistence settings
+Makefile                  deploy / logs / backup / test-stack helpers
 tests/                    pytest (fakeredis + StubBackend; no network/Redis)
 ```
 
 ## Config / secrets
 
 All config is environment variables, loaded in
-[config.py](src/tcdd_bot/config.py). Secrets go through `fly secrets set …`
-(never committed); [.env.example](.env.example) is the local template.
+[config.py](src/tcdd_bot/config.py). Secrets live in `.env` on the server
+(chmod 600, gitignored, never committed); [.env.example](.env.example) is the
+template. `.env.test` holds the separate test bot's token.
 
 | Var                  | Purpose                                                  |
 | -------------------- | -------------------------------------------------------- |
 | `BOT_TOKEN`          | Telegram bot token (secret)                              |
-| `REDIS_URL`          | Upstash Redis connection URL (secret)                    |
+| `REDIS_URL`          | Redis connection URL (`redis://redis:6379/0` in compose) |
 | `ALLOWED_CHAT_IDS`   | Comma-separated allow-list; **empty ⇒ open to everyone** |
 | `ADMIN_CHAT_ID`      | Always allowed; receives failure warnings                |
 | `TCDD_MODE`          | `live` (default) or `stub`                               |
@@ -92,6 +97,13 @@ All config is environment variables, loaded in
 - **HTTP hygiene**: TCDD calls use `curl_cffi` `AsyncSession` (closed on
   shutdown); everything else uses `async with httpx.AsyncClient(...)`. Close what
   you open — this is a long-lived process.
+- **Deployment is a shared droplet.** Other services (OpenVPN, etc.) run on the
+  same host, so the stack publishes **no ports** and never edits host firewall
+  or sysctl state. Keep it that way: adding a `ports:` mapping would punch a
+  hole straight through the host's firewall, since Docker bypasses it.
+- **Two stacks, one repo.** `make up` runs prod (`.env`, live TCDD);
+  `make test-up` runs the stub backend under a separate bot token with its own
+  network and Redis volume. Run one at a time — the box has 1 GB and no swap.
 
 ## Quality gates (mirror CI in [.github/workflows/test.yml](.github/workflows/test.yml))
 

@@ -139,7 +139,7 @@ def configure_logging(level: str) -> None:
     )
     # httpx logs every request line at INFO, including the full Telegram API
     # URL — which embeds the bot token (api.telegram.org/bot<TOKEN>/...). Pin it
-    # to WARNING so the token never lands in logs (Fly, screenshots, etc.).
+    # to WARNING so the token never lands in logs (docker logs, screenshots, etc.).
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
