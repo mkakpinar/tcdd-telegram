@@ -1,6 +1,7 @@
 """Run the alarm checker once, from outside the bot process.
 
-Useful for ad-hoc debugging or manual triggers (e.g. via `fly ssh console -C ...`).
+Useful for ad-hoc debugging or manual triggers
+(e.g. `docker compose exec bot python scripts/check_alarms.py`).
 The bot itself schedules this same logic every 30 min via PTB JobQueue — see
 src/tcdd_bot/main.py.
 """

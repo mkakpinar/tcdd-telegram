@@ -19,12 +19,14 @@ Interactive Telegram bot for TCDD train ticket search + alarms.
 
 ## Architecture
 
-- **Bot** (`src/tcdd_bot/main.py`) — `python-telegram-bot` long-polling on Fly.io.
+- **Bot** (`src/tcdd_bot/main.py`) — `python-telegram-bot` long-polling, running as a
+  Docker container on a DigitalOcean droplet.
 - **Checker** (`src/tcdd_bot/checker.py`) — runs inside the bot process via PTB's
   `JobQueue`, every `CHECK_INTERVAL_MIN` minutes (default 10) with a random
   initial jitter. Same code is also callable as a one-off via
   `scripts/check_alarms.py`.
-- **State** — Fly.io managed Upstash Redis (Pay-as-you-go, native protocol).
+- **State** — Redis container alongside the bot on the same droplet (AOF-persisted,
+  reachable only on the compose-private network).
 - **TCDD client** — `src/tcdd_bot/tcdd.py`. Two backends:
   - `LiveBackend` (default): real TCDD JSON API at `web-api-prod-ytp.tcddtasimacilik.gov.tr/tms`. Uses `curl_cffi` with Chrome ja3 impersonation because TCDD's edge ja3-fingerprints non-browser clients.
   - `StubBackend`: deterministic fake trains for local development. Set `TCDD_MODE=stub` to use.
@@ -37,9 +39,10 @@ Create one via @BotFather, copy the token.
 
 ### 2. Redis
 
-We use Fly.io's managed Upstash Redis (`fly redis create --plan Pay-as-you-go`),
-which is effectively free for personal use ($0.20 per 100K commands).
-Native Redis protocol — copy the `redis://default:PASSWORD@HOST:6379` URL.
+Redis runs as a container in the same compose stack (see
+[docker-compose.yml](docker-compose.yml)). Nothing to provision: `REDIS_URL` is
+just `redis://redis:6379/0`. It persists to an AOF file on a named volume, so
+alarms survive restarts and reboots.
 
 ### 3. Local dev
 
@@ -49,7 +52,7 @@ python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -e .
 cp .env.example .env
-# fill in BOT_TOKEN, UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN
+# fill in BOT_TOKEN, ADMIN_CHAT_ID; point REDIS_URL at a local Redis
 python -m tcdd_bot.main
 ```
 
@@ -72,25 +75,53 @@ Unit tests (no network / no Redis — uses `fakeredis` and a stub backend) cover
 config parsing, station fuzzy-match, TCDD response parsing, message rendering,
 the Redis store, the alarm checker, and the access gate.
 
-### 4. Deploy bot to Fly.io
+### 4. Deploy to a server
+
+Any Linux host with Docker + the compose plugin. The stack publishes **no
+ports** — the bot is outbound-only (Telegram long-polling + TCDD) and Redis is
+reachable only on the stack's private network — so it drops in next to existing
+services without touching the host firewall.
 
 ```bash
-flyctl launch --no-deploy
-flyctl secrets set \
-  BOT_TOKEN=… \
-  REDIS_URL=redis://default:…@fly-tcdd-redis.upstash.io:6379
-flyctl deploy
+git clone https://github.com/mkakpinar/tcdd-telegram.git /opt/tcdd
+cd /opt/tcdd
+cp .env.example .env && chmod 600 .env
+# fill in BOT_TOKEN, ADMIN_CHAT_ID, ALLOWED_CHAT_IDS
+make up
+make logs
 ```
 
-### 5. Periodic checker
+Redeploy after a change: `make deploy` (git pull + rebuild + restart).
 
-The checker runs automatically inside the bot process. No extra setup. See
-`fly logs` for "checker scheduled" / "checker: N active alarms" lines.
+Back up Redis daily with `make backup` (keeps the last 7 dumps):
 
-To run it ad-hoc against your Fly Redis (e.g. for debugging):
+```
+0 4 * * * cd /opt/tcdd && make backup >> /var/log/tcdd-backup.log 2>&1
+```
+
+### 5. Test stack
+
+A second stack runs the stub backend against a **separate bot token**, with its
+own network and its own Redis volume, so it can never touch production state:
 
 ```bash
-fly ssh console -a tcdd-telegram -C "python scripts/check_alarms.py"
+cp .env.example .env.test && chmod 600 .env.test
+# fill in the TEST bot's BOT_TOKEN
+make test-up && make test-logs
+make test-down     # stops it and deletes its Redis volume
+```
+
+On a 1 GB box, run one stack at a time.
+
+### 6. Periodic checker
+
+The checker runs automatically inside the bot process. No extra setup — look for
+"checker scheduled" / "checker: N active alarms" in `make logs`.
+
+To run it ad-hoc:
+
+```bash
+docker compose exec bot python scripts/check_alarms.py
 ```
 
 ## Access control
@@ -100,7 +131,8 @@ to specific people, set `ALLOWED_CHAT_IDS` to a comma-separated list of Telegram
 chat IDs:
 
 ```bash
-flyctl secrets set ALLOWED_CHAT_IDS=12345,67890
+# in .env, then: make restart
+ALLOWED_CHAT_IDS=12345,67890
 ```
 
 - Empty / unset ⇒ open to everyone.
@@ -108,7 +140,7 @@ flyctl secrets set ALLOWED_CHAT_IDS=12345,67890
   the bot. Everyone else gets a "not authorized" reply that includes their own
   chat ID, and the attempt is logged.
 - **Finding a chat ID**: have the person message the bot once and read the
-  `blocked unauthorized chat_id=…` line in `fly logs`, ask them for the ID the
+  `blocked unauthorized chat_id=…` line in `make logs`, ask them for the ID the
   bot replied with, or use `@userinfobot` on Telegram. Append it to the list to
   add them.
 
@@ -130,7 +162,7 @@ src/tcdd_bot/
   config.py            env loading
   tcdd.py              TCDD search client (StubBackend, LiveBackend)
   stations.py          station catalog from CDN + fuzzy match
-  store.py             Upstash Redis-backed user/alarm/rate-limit store
+  store.py             Redis-backed user/alarm/rate-limit store
   format.py            message rendering
   handlers/
     start.py           /start, /help
@@ -140,6 +172,8 @@ src/tcdd_bot/
   checker.py           periodic alarm checker (runs in-process via JobQueue)
 scripts/
   check_alarms.py      ad-hoc one-shot checker invocation
-Dockerfile             Fly.io image
-fly.toml               Fly.io app config
+Dockerfile             bot image
+docker-compose.yml     bot + redis stack (prod/test overlays alongside)
+deploy/redis.conf      Redis persistence settings
+Makefile               deploy / logs / backup / test-stack helpers
 ```

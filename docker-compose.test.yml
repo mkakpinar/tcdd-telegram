@@ -1,0 +1,19 @@
+# Test overlay: separate bot token and the deterministic stub backend.
+#
+# Run via `make test-up`, which also sets COMPOSE_PROJECT_NAME=tcdd-test — that
+# gives the test stack its own network and its own Redis volume, so test alarms
+# never touch production state. `make test-down` removes both.
+services:
+  bot:
+    env_file: .env.test
+    environment:
+      # Wins over anything in .env.test: the test stack must never hit the real
+      # TCDD API, and a 1-minute checker makes alarm firing quick to verify.
+      TCDD_MODE: stub
+      CHECK_INTERVAL_MIN: "1"
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.29.0.0/24

@@ -1,7 +1,8 @@
 """Redis store for users, alarms, and rate limits.
 
-Uses native Redis protocol via redis-py async (works with Fly.io's Upstash
-Redis URL `redis://default:...@fly-*.upstash.io:6379`).
+Uses the native Redis protocol via redis-py async. In production this points
+at the Redis container next to the bot (`redis://redis:6379/0`); any standard
+`redis://` URL (including a hosted one) works unchanged.
 
 Schema (see plan):
   user:{chat_id}                hash  username, paused (0/1), created_at

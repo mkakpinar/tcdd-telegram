@@ -1,0 +1,17 @@
+# Keep the build context small (1 vCPU box) and make sure secrets can never be
+# copied into an image layer by accident.
+.git
+.github
+.venv
+venv
+.env
+.env.*
+__pycache__
+*.pyc
+*.egg-info
+.pytest_cache
+.ruff_cache
+tests
+backups
+deploy
+*.pdf
