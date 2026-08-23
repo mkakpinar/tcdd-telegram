@@ -14,6 +14,7 @@ Interactive Telegram bot for TCDD train ticket search + alarms.
 - `/search` — Nereden / Nereye / Tarih(ler) / Yolcu sayısı seçtir, boş koltuklu trenleri listele, TCDD'ye deeplink. Birden fazla gün seçilebilir.
 - `/alarm` — aynı parametreleri al, alarm kur. Birden fazla gün seçilebilir; yalnızca seçilen günler için kontrol edilir. İstersen belirli tren(ler) seçip sadece onları izleyebilirsin (seçilen tren no'ları tüm seçili günlerde geçerli). Boş yer çıkınca uyarır.
 - `/alarms`, `/clear`, `/pause`, `/resume` — alarm yönetimi.
+- `/allow`, `/deny`, `/allowed`, `/requests` — yönetici erişim yönetimi (aşağıya bak).
 - Tekerlekli sandalye koltukları sayımdan çıkarılır.
 - Kullanıcı başına en fazla 5 aktif alarm, saatte 10 arama.
 
@@ -155,23 +156,52 @@ docker compose exec bot python scripts/check_alarms.py
 
 ## Access control
 
-By default the bot is **open** — anyone who finds it can use it. To restrict it
-to specific people, set `ALLOWED_CHAT_IDS` to a comma-separated list of Telegram
-chat IDs:
+Erişim iki kaynağın **birleşimidir**:
 
-```bash
-# in .env, then: make restart
-ALLOWED_CHAT_IDS=12345,67890
+| Kaynak | Nerede | Nasıl değişir |
+| --- | --- | --- |
+| `ALLOWED_CHAT_IDS` | sunucudaki `.env` | `.env` düzenlenir, `make up` |
+| Çalışma zamanı listesi | Redis (`access:allowed`) | Telegram'dan komutla, **anında** |
+
+`ADMIN_CHAT_ID` her zaman izinlidir. **İkisi de boşsa bot herkese açıktır** —
+kısıtlamak için birine en az bir kayıt ekle.
+
+### Yönetici komutları
+
+| Komut | İş |
+| --- | --- |
+| `/allow <chat_id>` | Erişim verir; bir sonraki mesajda geçerli |
+| `/deny <chat_id>` | Erişimi kaldırır. `.env`'den gelen ID'ler korunur |
+| `/allowed` | İzinli listesi; `.env` kaynaklı olanlar işaretli |
+| `/requests` | Bekleyen erişim talepleri (onayla/reddet düğmeleriyle) |
+
+`.env` kaynaklı kayıtlar sohbetten silinemez — yöneticinin kendini kilitlemesini
+önleyen şey budur.
+
+### Erişim talebi akışı
+
+İzni olmayan biri bota yazdığında **🔑 Erişim iste** düğmesi görür. Bastığında
+yöneticiye şu bilgilerle bir bildirim gider:
+
+```
+🔑 Erişim talebi
+• Ahmet Yılmaz (@ahmety)
+• Sohbet ID: 5885884815
+• Kullanıcı ID: 5885884815
+[ ✅ Onayla ]  [ ❌ Reddet ]
 ```
 
-- Empty / unset ⇒ open to everyone.
-- When set, only those chat IDs (plus `ADMIN_CHAT_ID`, always allowed) may use
-  the bot. Everyone else gets a "not authorized" reply that includes their own
-  chat ID, and the attempt is logged.
-- **Finding a chat ID**: have the person message the bot once and read the
-  `blocked unauthorized chat_id=…` line in `make logs`, ask them for the ID the
-  bot replied with, or use `@userinfobot` on Telegram. Append it to the list to
-  add them.
+Kullanıcı adı olmayan hesaplar için `(kullanıcı adı yok)` yazar. Bekleyen bir
+talep varken ikincisi oluşturulamaz; reddedilen kullanıcı 24 saat yeniden talep
+edemez. Karar verildiğinde talep sahibine bildirim gider.
+
+### Redis erişilemezse
+
+İzin kontrolü her mesajda Redis'e gider. Redis yanıt vermezse bot
+`ALLOWED_CHAT_IDS`'e düşer ve durumu loglar: `.env`'de tanımlı olanlar ve
+yönetici çalışmaya devam eder, yalnızca çalışma zamanında verilmiş izinler
+geçici olarak düşer. Ne herkese açılır ne de tamamen kilitlenir. Hiçbir yerde
+liste tanımlı değilse bot açık kalır — bugünkü davranışın aynısı.
 
 ## Notes
 
