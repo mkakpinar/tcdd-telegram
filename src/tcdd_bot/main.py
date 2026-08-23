@@ -19,7 +19,7 @@ from telegram.ext import (
 
 from .checker import run_once as checker_run_once
 from .config import Settings, load_settings
-from .handlers import alarm, ops, search, start
+from .handlers import access, alarm, ops, search, start
 from .stations import StationCatalog
 from .store import Store
 from .tcdd import build_backend
@@ -28,20 +28,48 @@ from .tcdd import build_backend
 
 
 def _make_access_gate(settings: Settings):
-    """Global gate (handler group -1): if ALLOWED_CHAT_IDS is set, only those
-    chat IDs (and ADMIN_CHAT_ID) may use the bot. Empty list = open to all.
-    Stops propagation for everyone else so commands, conversations, and button
-    callbacks are all blocked by this single handler."""
-    allowed = settings.allowed_chat_ids
+    """Global gate (handler group -1): decides who may use the bot at all.
+
+    Two sources, unioned: ALLOWED_CHAT_IDS from the environment (static, owned
+    by whoever deploys) and a Redis set the admin manages from Telegram (see
+    handlers/access.py). Both empty = open to everyone, as before.
+
+    The Redis lookup happens per update so a grant takes effect on the next
+    message instead of the next restart. If Redis is unreachable we fall back to
+    the environment list rather than guessing: the bot neither throws its doors
+    open nor locks out the people the deployment explicitly trusts.
+
+    Stops propagation for everyone else, so commands, conversations, and button
+    callbacks are all covered by this one handler."""
+    static = settings.allowed_chat_ids
     admin = settings.admin_chat_id
 
     async def gate(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
-        if not allowed:
-            return
         chat = update.effective_chat
         cid = chat.id if chat else None
-        if cid in allowed or (admin is not None and cid == admin):
+        if admin is not None and cid == admin:
             return
+        if cid is not None and cid in static:
+            return
+
+        store = ctx.application.bot_data.get("store")
+        try:
+            if store is not None and cid is not None and await store.is_allowed(cid):
+                return
+            # Nobody configured anywhere means the bot is deliberately open.
+            if not static and (store is None or not await store.any_allowed()):
+                return
+        except Exception:
+            logging.exception("access check failed; falling back to ALLOWED_CHAT_IDS")
+            if not static:
+                return
+
+        # The one thing a blocked user is allowed to do: ask for access. Without
+        # this the button below would be inert, since pressing it arrives here
+        # as another update from a chat that still isn't on the list.
+        if update.callback_query and update.callback_query.data == access.REQUEST_CB:
+            return
+
         logging.info("blocked unauthorized chat_id=%s", cid)
         if update.callback_query:
             await update.callback_query.answer()
@@ -49,7 +77,8 @@ def _make_access_gate(settings: Settings):
             await update.effective_message.reply_text(
                 "⛔️ Bu botu kullanma iznin yok.\n"
                 f"Chat ID'in: {cid}\n"
-                "Erişim için bu numarayı yöneticiye ilet."
+                "Erişim istemek için aşağıdaki düğmeyi kullanabilirsin.",
+                reply_markup=access.request_button(),
             )
         raise ApplicationHandlerStop
 
@@ -168,6 +197,7 @@ def main() -> None:
     search.register(app)
     alarm.register(app)
     ops.register(app)
+    access.register(app)
     app.run_polling(allowed_updates=["message", "callback_query"])
 
 

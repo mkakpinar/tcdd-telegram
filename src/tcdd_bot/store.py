@@ -14,6 +14,10 @@ Schema (see plan):
   alarm:{id}:notified           set   train numbers already alerted for
   alarms:active                 set   all currently active alarm IDs
   ratelimit:search:{chat_id}    list  timestamps of /search calls in last hour
+  access:allowed                set   chat IDs granted access at runtime
+  access:request:{chat_id}      hash  username, full_name, user_id, created_at
+  access:requests               set   chat IDs with a pending request
+  access:cooldown:{chat_id}     str   set after a rejection; blocks re-requesting
 """
 
 from __future__ import annotations
@@ -42,6 +46,15 @@ class Alarm:
     # Train numbers to watch. Empty = alert on ANY train (the default). When set,
     # only these train numbers alert, on whichever selected days they run.
     target_trains: set[str] = field(default_factory=set)
+
+
+@dataclass(frozen=True)
+class AccessRequest:
+    chat_id: int
+    user_id: int
+    username: str | None  # Telegram usernames are optional
+    full_name: str
+    created_at: datetime | None
 
 
 def _now_iso() -> str:
@@ -230,3 +243,87 @@ class Store:
 
     async def set_checker_degraded(self, degraded: bool) -> None:
         await self.r.set("checker:degraded", "1" if degraded else "0")
+
+    # --- access control ---
+    #
+    # The runtime allow-list lives here rather than in the environment so the
+    # admin can grant access from Telegram without a redeploy. It is the union
+    # with ALLOWED_CHAT_IDS, never a replacement: settings stay authoritative
+    # for whoever the deployment hardcoded (see main._make_access_gate).
+
+    async def is_allowed(self, chat_id: int) -> bool:
+        return bool(await self.r.sismember("access:allowed", str(chat_id)))
+
+    async def add_allowed(self, chat_id: int) -> bool:
+        """Grant access. True if this actually added someone new."""
+        added = await self.r.sadd("access:allowed", str(chat_id))
+        return bool(added)
+
+    async def remove_allowed(self, chat_id: int) -> bool:
+        """Revoke access. True if the chat was on the list."""
+        removed = await self.r.srem("access:allowed", str(chat_id))
+        return bool(removed)
+
+    async def list_allowed(self) -> set[int]:
+        members = await self.r.smembers("access:allowed")
+        return {int(m) for m in members}
+
+    async def any_allowed(self) -> bool:
+        """Whether the runtime list has anyone on it.
+
+        Distinguishes "restricted, but this chat isn't on the list" from
+        "no allow-list configured at all", which leaves the bot open.
+        """
+        return bool(await self.r.scard("access:allowed"))
+
+    # --- access requests ---
+
+    async def create_access_request(
+        self, chat_id: int, user_id: int, username: str | None, full_name: str
+    ) -> bool:
+        """Record a pending request. False if one is already pending or the
+        chat is in the cooldown that follows a rejection."""
+        if await self.r.exists(f"access:cooldown:{chat_id}"):
+            return False
+        if not await self.r.sadd("access:requests", str(chat_id)):
+            return False
+        await self.r.hset(
+            f"access:request:{chat_id}",
+            mapping={
+                "user_id": str(user_id),
+                "username": username or "",
+                "full_name": full_name,
+                "created_at": _now_iso(),
+            },
+        )
+        return True
+
+    async def get_access_request(self, chat_id: int) -> AccessRequest | None:
+        d = await self.r.hgetall(f"access:request:{chat_id}")
+        if not d:
+            return None
+        return AccessRequest(
+            chat_id=chat_id,
+            user_id=int(d.get("user_id") or 0),
+            username=d.get("username") or None,
+            full_name=d.get("full_name", ""),
+            created_at=_parse_iso(d.get("created_at")),
+        )
+
+    async def list_access_requests(self) -> list[AccessRequest]:
+        ids = await self.r.smembers("access:requests")
+        out = []
+        for cid in ids:
+            req = await self.get_access_request(int(cid))
+            if req is not None:
+                out.append(req)
+        out.sort(key=lambda r: (r.created_at is None, r.created_at))
+        return out
+
+    async def clear_access_request(self, chat_id: int, cooldown_s: int = 0) -> None:
+        """Drop a request. A cooldown stops a rejected user from immediately
+        asking again; approvals pass 0 since the question is settled."""
+        await self.r.srem("access:requests", str(chat_id))
+        await self.r.delete(f"access:request:{chat_id}")
+        if cooldown_s > 0:
+            await self.r.set(f"access:cooldown:{chat_id}", "1", ex=cooldown_s)

@@ -55,7 +55,7 @@ src/tcdd_bot/
   store.py       Redis store (users / alarms / rate limits)
   format.py      Telegram message rendering
   checker.py     periodic alarm checker (in-process via JobQueue)
-  handlers/      start, search, alarm, ops, common
+  handlers/      start, search, alarm, ops, access, common
 scripts/check_alarms.py   ad-hoc one-shot checker
 Dockerfile                bot image
 docker-compose.yml        bot + redis stack; .prod / .test overlays
@@ -88,8 +88,14 @@ template. `.env.test` holds the separate test bot's token.
 - `src/` layout; install editable (`pip install -e '.[dev]'`). Async throughout.
 - **Config is centralized** in `config.py` — add a setting there, don't scatter
   `os.getenv`.
-- **Access control fails open by default** (empty `ALLOWED_CHAT_IDS` ⇒ everyone);
-  set the allow-list to restrict. `ADMIN_CHAT_ID` is always allowed.
+- **Access control is the union of two lists**: `ALLOWED_CHAT_IDS` (static, owned
+  by the deployment) and a Redis set the admin manages from Telegram via
+  `/allow` / `/deny` (see [handlers/access.py](src/tcdd_bot/handlers/access.py)).
+  The Redis lookup runs per update, so a grant lands on the next message rather
+  than the next redeploy. **Both empty ⇒ open to everyone**; `ADMIN_CHAT_ID` is
+  always allowed and `.env` entries can't be revoked from chat, which is what
+  stops the admin locking themselves out. If Redis is unreachable the gate falls
+  back to `ALLOWED_CHAT_IDS` — deliberately neither fail-open nor fail-closed.
 - **Baked TCDD token** (tcdd.py): the hardcoded JWT is the _same public token
   TCDD's own frontend ships_; its `exp` is in 2024 but the gateway doesn't
   validate it. It is **not a personal credential** — leave it in code; if TCDD
