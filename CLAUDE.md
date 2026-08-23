@@ -22,8 +22,8 @@ An interactive Telegram bot for **TCDD** (Turkish State Railways) train-ticket
 search and seat-availability **alarms** (Python 3.12, asyncio,
 `python-telegram-bot`). Users run `/search` to list trains with free seats or
 `/alarm` to be notified when seats open up. Runs as a long-polling bot in a
-Docker container on a DigitalOcean droplet; state lives in a Redis container
-next to it.
+Docker container on a VPS **in Turkey** (TCDD 403s foreign IPs — see
+Conventions); state lives in a Redis container next to it.
 
 > Personal/educational project — **not affiliated with TCDD**. It reads TCDD's
 > public web API. See the README disclaimer.
@@ -97,10 +97,16 @@ template. `.env.test` holds the separate test bot's token.
 - **HTTP hygiene**: TCDD calls use `curl_cffi` `AsyncSession` (closed on
   shutdown); everything else uses `async with httpx.AsyncClient(...)`. Close what
   you open — this is a long-lived process.
-- **Deployment is a shared droplet.** Other services (OpenVPN, etc.) run on the
-  same host, so the stack publishes **no ports** and never edits host firewall
-  or sysctl state. Keep it that way: adding a `ports:` mapping would punch a
-  hole straight through the host's firewall, since Docker bypasses it.
+- **The host must be in Turkey.** TCDD's API returns a bare nginx `403` to every
+  foreign IP, regardless of TLS fingerprint, headers, or token — ja3 impersonation
+  is a separate problem and does not help here. Before deploying anywhere new,
+  run `curl -so /dev/null -w '%{http_code}' https://web-api-prod-ytp.tcddtasimacilik.gov.tr/`
+  on that host; `403` means stop. `ebilet.…` answers 200 everywhere, so don't
+  test with it. See the README's Hosting requirement table.
+- **Publish no ports.** The bot is outbound-only and Redis is reachable only on
+  the compose network, so the stack can sit next to other services without
+  touching host firewall or sysctl state. Keep it that way — a `ports:` mapping
+  would punch straight through the host firewall, since Docker bypasses it.
 - **Two stacks, one repo.** `make up` runs prod (`.env`, live TCDD);
   `make test-up` runs the stub backend under a separate bot token with its own
   network and Redis volume. Run one at a time — the box has 1 GB and no swap.
