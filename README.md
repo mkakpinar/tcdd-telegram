@@ -20,16 +20,44 @@ Interactive Telegram bot for TCDD train ticket search + alarms.
 ## Architecture
 
 - **Bot** (`src/tcdd_bot/main.py`) — `python-telegram-bot` long-polling, running as a
-  Docker container on a DigitalOcean droplet.
+  Docker container on a VPS **in Turkey** (see [Hosting requirement](#hosting-requirement)).
 - **Checker** (`src/tcdd_bot/checker.py`) — runs inside the bot process via PTB's
   `JobQueue`, every `CHECK_INTERVAL_MIN` minutes (default 10) with a random
   initial jitter. Same code is also callable as a one-off via
   `scripts/check_alarms.py`.
-- **State** — Redis container alongside the bot on the same droplet (AOF-persisted,
+- **State** — Redis container alongside the bot on the same host (AOF-persisted,
   reachable only on the compose-private network).
 - **TCDD client** — `src/tcdd_bot/tcdd.py`. Two backends:
   - `LiveBackend` (default): real TCDD JSON API at `web-api-prod-ytp.tcddtasimacilik.gov.tr/tms`. Uses `curl_cffi` with Chrome ja3 impersonation because TCDD's edge ja3-fingerprints non-browser clients.
   - `StubBackend`: deterministic fake trains for local development. Set `TCDD_MODE=stub` to use.
+
+## Hosting requirement
+
+**The server must be in Turkey.** TCDD's API host answers every request from a
+foreign IP with a bare nginx `403 Forbidden` — no matter the TLS fingerprint,
+headers, or token. Verified with plain `curl` from several origins:
+
+| Origin | `GET web-api-prod-ytp…/` |
+| --- | --- |
+| Home connection in Turkey | `200` |
+| Turkish datacenter (check-host.net `tr1`/`tr2` nodes) | `200` |
+| DigitalOcean, Frankfurt | `403` |
+| Railway, USA | `403` |
+| German datacenter (check-host.net `de1`) | `403` |
+
+The filter is geographic, not residential-vs-datacenter: a Turkish VPS works
+fine. Note that `ebilet.tcddtasimacilik.gov.tr` answers `200` from anywhere —
+only the API host is filtered, so being able to load the website proves nothing.
+
+Before deploying to any new host, check it there first:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" https://web-api-prod-ytp.tcddtasimacilik.gov.tr/
+```
+
+`403` means stop — no configuration or code change fixes it. Symptoms if you
+deploy anyway: `/search` replies "arama sırasında bir sorun oluştu" and the log
+shows `RuntimeError: TCDD HTTP 403`.
 
 ## Setup
 
@@ -77,10 +105,11 @@ the Redis store, the alarm checker, and the access gate.
 
 ### 4. Deploy to a server
 
-Any Linux host with Docker + the compose plugin. The stack publishes **no
-ports** — the bot is outbound-only (Telegram long-polling + TCDD) and Redis is
-reachable only on the stack's private network — so it drops in next to existing
-services without touching the host firewall.
+Any Linux host with Docker + the compose plugin, **located in Turkey** (see
+[Hosting requirement](#hosting-requirement)). The stack publishes **no ports** —
+the bot is outbound-only (Telegram long-polling + TCDD) and Redis is reachable
+only on the stack's private network — so it drops in next to existing services
+without touching the host firewall.
 
 ```bash
 git clone https://github.com/mkakpinar/tcdd-telegram.git /opt/tcdd
