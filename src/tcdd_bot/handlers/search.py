@@ -55,7 +55,9 @@ def build_trip_conversation(
         ctx.user_data.clear()
         ctx.user_data["mode"] = prefix
         await update.message.reply_text(
-            "Nereden? (örn: Söğütlüçeşme)\nveya hazır bir rota seç:",
+            "Nereden? Şehir ya da istasyon adı yaz (örn: Ankara, Söğütlüçeşme)"
+            " — yazdığına en yakın istasyonları listeleyeceğim.\n"
+            "veya hazır bir rota seç:",
             reply_markup=route_picker_kb(prefix),
         )
         return ASK_FROM
@@ -79,10 +81,13 @@ def build_trip_conversation(
         catalog = ctx.application.bot_data["stations"]
         matches = catalog.search(update.message.text, limit=5)
         if not matches:
-            await update.message.reply_text("İstasyon bulunamadı, tekrar yaz.")
+            await update.message.reply_text(
+                "İstasyon bulunamadı. Şehir adı yazmayı dene (örn: Konya)."
+            )
             return ASK_FROM
         await update.message.reply_text(
-            "Hangisi?", reply_markup=station_picker_kb(matches, f"{prefix}_from")
+            "Eşleşen istasyonlar — hangisi?",
+            reply_markup=station_picker_kb(matches, f"{prefix}_from"),
         )
         return ASK_FROM
 
@@ -95,17 +100,23 @@ def build_trip_conversation(
         ctx.user_data["from_id"] = sid
         ctx.user_data["from_name"] = station.name
         await q.edit_message_text(f"Nereden: *{station.name}*", parse_mode="Markdown")
-        await q.message.reply_text("Nereye?")
+        await q.message.reply_text(
+            "Nereye? Şehir ya da istasyon adı yaz (örn: İzmir, Selçuk)"
+            " — yazdığına en yakın istasyonları listeleyeceğim."
+        )
         return ASK_TO
 
     async def got_to_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
         catalog = ctx.application.bot_data["stations"]
         matches = catalog.search(update.message.text, limit=5)
         if not matches:
-            await update.message.reply_text("İstasyon bulunamadı, tekrar yaz.")
+            await update.message.reply_text(
+                "İstasyon bulunamadı. Şehir adı yazmayı dene (örn: Konya)."
+            )
             return ASK_TO
         await update.message.reply_text(
-            "Hangisi?", reply_markup=station_picker_kb(matches, f"{prefix}_to")
+            "Eşleşen istasyonlar — hangisi?",
+            reply_markup=station_picker_kb(matches, f"{prefix}_to"),
         )
         return ASK_TO
 
